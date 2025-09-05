@@ -1,0 +1,17 @@
+{
+    "name": "m4rc/reut_cli",
+    "description": "Simple PHP Framework",
+    "type": "library",
+    "autoload": {
+        "psr-4": {
+            "M4rc\\ReutCli\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "m4rcTr3y",
+            "email": "marctrevis61@proton.me"
+        }
+    ],
+    "require": {}
+}

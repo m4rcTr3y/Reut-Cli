@@ -1,0 +1,41 @@
+#!/usr/bin/env php
+<?php
+
+// Ensure CLI execution
+if (php_sapi_name() !== 'cli') {
+    exit('This script must be run from the command line.' . PHP_EOL);
+}
+
+// Check if PHP is accessible
+if (!defined('PHP_BINARY') || !is_executable(PHP_BINARY)) {
+    $error = 'PHP is not installed or not found in system PATH.' . PHP_EOL;
+    $error .= 'Please install PHP (>=7.4) and ensure it is added to your system PATH.' . PHP_EOL;
+    $error .= 'Download PHP from https://www.php.net/downloads' . PHP_EOL;
+    $error .= 'Windows: Add PHP to PATH (e.g., C:\php) in System Environment Variables.' . PHP_EOL;
+    exit($error);
+}
+
+// Get command from arguments
+$command = $argv[1] ?? 'help';
+
+// Handle commands
+switch ($command) {
+    case 'init':
+        echo 'Initializing a new project...' . PHP_EOL;
+        $projectDir = getcwd() . DIRECTORY_SEPARATOR . ($argv[2] ?? 'myproject');
+        if (!is_dir($projectDir)) {
+            mkdir($projectDir, 0755, true);
+            echo "Created directory: $projectDir" . PHP_EOL;
+        } else {
+            echo "Directory already exists: $projectDir" . PHP_EOL;
+        }
+        break;
+    case 'help':
+    default:
+        echo 'MyFramework CLI Tool' . PHP_EOL;
+        echo 'Commands:' . PHP_EOL;
+        echo '  init [name]  Initialize a new project' . PHP_EOL;
+        echo '  help         Show this help message' . PHP_EOL;
+        echo 'Requirements: PHP (>=7.4) must be installed and in system PATH.' . PHP_EOL;
+        break;
+}
