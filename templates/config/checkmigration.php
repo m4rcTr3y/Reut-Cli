@@ -1,9 +1,8 @@
 <?php
 
-
 require __DIR__ . "/../vendor/autoload.php";
 require __DIR__ . "/../config.php";
-require __DIR__.'/utils/ascii_table.php';
+require __DIR__ . "/utils/ascii_table.php";
 
 use Reut\DB\DataBase;
 
@@ -40,7 +39,7 @@ try {
     if (empty($migrations)) {
         echo "No migrations have been applied.\n";
     } else {
-      displayTable($migrations,"Applied Migrations");
+        displayTable($migrations, "Applied Migrations");
     }
 
     // Check for pending migrations
@@ -76,10 +75,24 @@ try {
         $tableName = $tableInstance->tableName;
         $timestamp = date('YmdHis');
 
+        // Query the migrations table to check for existing migrations
+        $existingMigrations = $baseDb->sqlQuery("SELECT name FROM migrations WHERE name LIKE '%$tableName%'");
+
+        // Helper function to check if a migration for a specific action exists
+        $hasMigration = function ($action) use ($existingMigrations, $tableName) {
+            foreach ($existingMigrations as $migration) {
+                // Match migration names without timestamp
+                if (preg_match("/{$action}_{$tableName}_table/", $migration['name'])) {
+                    return true;
+                }
+            }
+            return false;
+        };
+
         // Check if table creation is pending
         if (!$tableInstance->tableExists($tableName)) {
             $sql = $tableInstance->genSQL();
-            if ($sql !== false) {
+            if ($sql !== false && !$hasMigration('create')) {
                 $migrationName = 'create_' . $tableName . '_table_' . $timestamp;
                 $pendingMigrations[] = [
                     'name' => $migrationName,
@@ -89,8 +102,8 @@ try {
                 ];
             }
         }
-        
-        if($tableInstance->tableExists($tableName)){
+
+        if ($tableInstance->tableExists($tableName)) {
             // Check for missing columns (to add)
             $dbColumns = $tableInstance->getTableSchema($tableName);
             $modelColumns = array_filter($tableInstance->columns, fn($key) => strpos($key, 'FOREIGN KEY') === false, ARRAY_FILTER_USE_KEY);
@@ -98,28 +111,48 @@ try {
             $missingColumns = array_diff($modelColumnNames, $dbColumns);
 
             foreach ($missingColumns as $column) {
-                $definition = $tableInstance->columns[$column];
-                $migrationName = 'add_' . $column . '_to_' . $tableName . '_table_' . $timestamp;
-                $sql = $tableInstance->getAddColumnSQL($column, $definition);
-                $pendingMigrations[] = [
-                    'name' => $migrationName,
-                    'sql' => $sql,
-                    'type' => 'add_column',
-                    'class' => get_class($tableInstance)
-                ];
+                // Check if an add_column migration already exists for this column
+                $hasAddMigration = false;
+                foreach ($existingMigrations as $migration) {
+                    if (preg_match("/add_{$column}_to_{$tableName}_table/", $migration['name'])) {
+                        $hasAddMigration = true;
+                        break;
+                    }
+                }
+                if (!$hasAddMigration) {
+                    $definition = $tableInstance->columns[$column];
+                    $migrationName = 'add_' . $column . '_to_' . $tableName . '_table_' . $timestamp;
+                    $sql = $tableInstance->getAddColumnSQL($column, $definition);
+                    $pendingMigrations[] = [
+                        'name' => $migrationName,
+                        'sql' => $sql,
+                        'type' => 'add_column',
+                        'class' => get_class($tableInstance)
+                    ];
+                }
             }
 
             // Check for columns to drop (in DB but not in model)
             $columnsToDrop = array_diff($dbColumns, $modelColumnNames);
             foreach ($columnsToDrop as $column) {
-                $migrationName = 'drop_' . $column . '_from_' . $tableName . '_table_' . $timestamp;
-                $sql = $tableInstance->getDropColumnSQL($column);
-                $pendingMigrations[] = [
-                    'name' => $migrationName,
-                    'sql' => $sql,
-                    'type' => 'drop_column',
-                    'class' => get_class($tableInstance)
-                ];
+                // Check if a drop_column migration already exists for this column
+                $hasDropMigration = false;
+                foreach ($existingMigrations as $migration) {
+                    if (preg_match("/drop_{$column}_from_{$tableName}_table/", $migration['name'])) {
+                        $hasDropMigration = true;
+                        break;
+                    }
+                }
+                if (!$hasDropMigration) {
+                    $migrationName = 'drop_' . $column . '_from_' . $tableName . '_table_' . $timestamp;
+                    $sql = $tableInstance->getDropColumnSQL($column);
+                    $pendingMigrations[] = [
+                        'name' => $migrationName,
+                        'sql' => $sql,
+                        'type' => 'drop_column',
+                        'class' => get_class($tableInstance)
+                    ];
+                }
             }
         }
     }
@@ -139,7 +172,7 @@ try {
         echo "No pending migrations found.\n";
     } else {
         echo "Found " . count($pendingMigrations) . " pending migration(s):\n";
-        displayTable($pendingMigrations,"Pending MIgrations");
+        displayTable($pendingMigrations, "Pending Migrations");
         echo "\n Run `php manage.php migrate` to apply create/add migrations\n";
     }
 
@@ -149,3 +182,4 @@ try {
 } catch (Exception $e) {
     echo "Exception: " . $e->getMessage() . "\n";
 }
+?>
