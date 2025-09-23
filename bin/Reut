@@ -37,7 +37,7 @@ switch ($command) {
         exit($exitCode);
     case 'help':
     default:
-        echo 'MyFramework CLI Tool v1.0.0' . PHP_EOL;
+        echo 'Reut CLI Tool v1.0.0' . PHP_EOL;
         echo 'Commands:' . PHP_EOL;
         echo '  init                    Initialize a new project (interactive)' . PHP_EOL;
         echo '  manage.php <command>    Run a manage.php command (e.g., generate:model Users)' . PHP_EOL;
