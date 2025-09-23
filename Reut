@@ -1,6 +1,10 @@
 #!/usr/bin/env php
 <?php
 
+
+
+
+
 // Ensure CLI execution
 if (php_sapi_name() !== 'cli') {
     exit('This script must be run from the command line.' . PHP_EOL);
@@ -21,21 +25,157 @@ $command = $argv[1] ?? 'help';
 // Handle commands
 switch ($command) {
     case 'init':
-        echo 'Initializing a new project...' . PHP_EOL;
-        $projectDir = getcwd() . DIRECTORY_SEPARATOR . ($argv[2] ?? 'myproject');
-        if (!is_dir($projectDir)) {
-            mkdir($projectDir, 0755, true);
-            echo "Created directory: $projectDir" . PHP_EOL;
-        } else {
-            echo "Directory already exists: $projectDir" . PHP_EOL;
-        }
+        initCommand($argv);
         break;
+    case '-v':
+        echo "V1.0.0";
+        exit(1);
+    case 'manage.php':
+        // Forward to manage.php in the current directory
+        $manageFile = getcwd() . DIRECTORY_SEPARATOR . 'manage.php';
+        if (!file_exists($manageFile)) {
+            echo "Error: manage.php not found in current directory. Run from a project directory." . PHP_EOL;
+            exit(1);
+        }
+        // Execute manage.php with remaining arguments
+        $args = array_slice($argv, 2);
+        $cmd = '"' . PHP_BINARY . '" "' . $manageFile . '" ' . implode(' ', array_map('escapeshellarg', $args));
+        passthru($cmd, $exitCode);
+        exit($exitCode);
     case 'help':
     default:
-        echo 'MyFramework CLI Tool' . PHP_EOL;
+        echo 'MyFramework CLI Tool v1.0.0' . PHP_EOL;
         echo 'Commands:' . PHP_EOL;
-        echo '  init [name]  Initialize a new project' . PHP_EOL;
-        echo '  help         Show this help message' . PHP_EOL;
-        echo 'Requirements: PHP (>=7.4) must be installed and in system PATH.' . PHP_EOL;
+        echo '  init                    Initialize a new project (interactive)' . PHP_EOL;
+        echo '  manage.php <command>    Run a manage.php command (e.g., generate:model Users)' . PHP_EOL;
+        echo '  help                    Show this help message' . PHP_EOL;
+        echo 'Requirements: PHP (>=7.4) and Composer must be installed and in system PATH.' . PHP_EOL;
         break;
+}
+
+function initCommand(array $argv): void
+{
+    echo 'Initializing a new project...' . PHP_EOL;
+
+    // Interactive prompts
+    $projectName = prompt('Enter project name (default: myproject): ') ?: 'myproject';
+    $dbType = prompt('Enter database type (mysql or postgresql, default: mysql): ') ?: 'mysql';
+    if (!in_array($dbType, ['mysql', 'postgresql'])) {
+        echo "Error: Invalid database type. Must be 'mysql' or 'postgresql'." . PHP_EOL;
+        exit(1);
+    }
+    $dbName = prompt('Enter database name (default: test_db): ') ?: 'test_db';
+    $dbUsername = prompt('Enter database username (default: root): ') ?: 'root';
+    $dbPassword = prompt('Enter database password (leave blank if none): ');
+    $secretKey = prompt('Enter secret key (default: 12345678): ') ?: '12345678';
+
+    // Create project directory
+    $projectDir = getcwd() . DIRECTORY_SEPARATOR . $projectName;
+    if (is_dir($projectDir)) {
+        echo "Error: Directory already exists: $projectDir" . PHP_EOL;
+        exit(1);
+    }
+    mkdir($projectDir, 0755, true);
+    echo "Created project directory: $projectDir" . PHP_EOL;
+
+    // Change to project directory
+    chdir($projectDir);
+
+    // Create subdirectories
+    $dirs = [
+        'config' . DIRECTORY_SEPARATOR . 'db',
+        'models',
+        'routers',
+    ];
+    foreach ($dirs as $dir) {
+        mkdir($dir, 0755, true);
+        echo "Created directory: $dir" . PHP_EOL;
+    }
+
+    // Copy entire config/ directory from templates
+    $templateConfigDir = __DIR__ . DIRECTORY_SEPARATOR . 'templates' . DIRECTORY_SEPARATOR . 'config';
+    $destConfigDir = 'config';
+    if (is_dir($templateConfigDir)) {
+        recursiveCopy($templateConfigDir, $destConfigDir);
+        echo "Copied config/ directory" . PHP_EOL;
+    } else {
+        echo "Warning: templates/config/ not found. Please add it to the CLI tool." . PHP_EOL;
+    }
+
+    // Generate .env file
+$envContent = <<<ENV
+SECRET_KEY=$secretKey
+DB_USERNAME=$dbUsername
+DB_PASSWORD=$dbPassword
+DB_NAME=$dbName
+DB_TYPE=$dbType
+ENV;
+    file_put_contents('.env', $envContent);
+    echo 'Created .env file' . PHP_EOL;
+
+    // Generate config.php
+    $configContent = require __DIR__ . '/src/configContent.php';
+    file_put_contents('config.php', $configContent);
+    echo 'Created config.php' . PHP_EOL;
+
+    // Generate index.php
+    $indexContent = require __DIR__ . '/src/indexContent.php';
+    file_put_contents('index.php', $indexContent);
+    echo 'Created index.php' . PHP_EOL;
+
+    // Generate manage.php
+    $manageContent = <<<PHP
+<?php
+
+require __DIR__ . '/vendor/autoload.php';
+use Reut\\DB\\Creator\\DatabaseCreator;
+
+\$newDB = new DatabaseCreator();
+\$newDB->Generate();
+
+PHP;
+    file_put_contents('manage.php', $manageContent);
+    echo 'Created manage.php' . PHP_EOL;
+
+    // Copy composer.json
+    $templateComposer = __DIR__ . DIRECTORY_SEPARATOR . 'templates' . DIRECTORY_SEPARATOR . 'composer.json';
+    if (file_exists($templateComposer)) {
+        copy($templateComposer, 'composer.json');
+        echo "Copied composer.json" . PHP_EOL;
+    } else {
+        echo "Warning: templates/composer.json not found. Please add it manually." . PHP_EOL;
+    }
+
+    echo PHP_EOL . 'Project initialized successfully!' . PHP_EOL;
+    echo 'Next steps:' . PHP_EOL;
+    echo '- Run `composer install` in the project directory to set up autoloading.' . PHP_EOL;
+    echo '- Use `php manage.php generate:model Users` to create models, etc.' . PHP_EOL;
+    echo '- Or use `myframework manage.php generate:model Users` from this directory.' . PHP_EOL;
+}
+
+function prompt(string $message): string
+{
+    echo $message;
+    return trim(fgets(STDIN));
+}
+
+function recursiveCopy(string $source, string $dest): void
+{
+    if (!is_dir($dest)) {
+        mkdir($dest, 0755, true);
+    }
+    $dir = opendir($source);
+    while (($file = readdir($dir)) !== false) {
+        if ($file === '.' || $file === '..') {
+            continue;
+        }
+        $srcPath = $source . DIRECTORY_SEPARATOR . $file;
+        $destPath = $dest . DIRECTORY_SEPARATOR . $file;
+        if (is_dir($srcPath)) {
+            recursiveCopy($srcPath, $destPath);
+        } else {
+            copy($srcPath, $destPath);
+        }
+    }
+    closedir($dir);
 }
