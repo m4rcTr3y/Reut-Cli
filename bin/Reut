@@ -1,22 +1,17 @@
 #!/usr/bin/env php
 <?php
 
-
-
-
+// Autoload dependencies
+require __DIR__ . '/../vendor/autoload.php';  // Use Composer autoloader
 
 // Ensure CLI execution
 if (php_sapi_name() !== 'cli') {
     exit('This script must be run from the command line.' . PHP_EOL);
 }
 
-// Check if PHP is accessible
-if (!defined('PHP_BINARY') || !is_executable(PHP_BINARY)) {
-    $error = 'PHP is not installed or not found in system PATH.' . PHP_EOL;
-    $error .= 'Please install PHP (>=7.4) and ensure it is added to your system PATH.' . PHP_EOL;
-    $error .= 'Download PHP from https://www.php.net/downloads' . PHP_EOL;
-    $error .= 'Windows: Add PHP to PATH (e.g., C:\php) in System Environment Variables.' . PHP_EOL;
-    exit($error);
+// Check PHP version
+if (version_compare(PHP_VERSION, '7.4.0', '<')) {
+    exit('PHP >=7.4 is required. Current version: ' . PHP_VERSION . PHP_EOL);
 }
 
 // Get command from arguments
@@ -28,16 +23,14 @@ switch ($command) {
         initCommand($argv);
         break;
     case '-v':
-        echo "V1.0.0";
-        exit(1);
+        echo "MyFramework CLI v1.0.0" . PHP_EOL;
+        exit(0);  // Exit with success code
     case 'manage.php':
-        // Forward to manage.php in the current directory
         $manageFile = getcwd() . DIRECTORY_SEPARATOR . 'manage.php';
         if (!file_exists($manageFile)) {
-            echo "Error: manage.php not found in current directory. Run from a project directory." . PHP_EOL;
+            echo "Error: manage.php not found in current directory." . PHP_EOL;
             exit(1);
         }
-        // Execute manage.php with remaining arguments
         $args = array_slice($argv, 2);
         $cmd = '"' . PHP_BINARY . '" "' . $manageFile . '" ' . implode(' ', array_map('escapeshellarg', $args));
         passthru($cmd, $exitCode);
@@ -48,8 +41,9 @@ switch ($command) {
         echo 'Commands:' . PHP_EOL;
         echo '  init                    Initialize a new project (interactive)' . PHP_EOL;
         echo '  manage.php <command>    Run a manage.php command (e.g., generate:model Users)' . PHP_EOL;
+        echo '  -v                      Show version' . PHP_EOL;
         echo '  help                    Show this help message' . PHP_EOL;
-        echo 'Requirements: PHP (>=7.4) and Composer must be installed and in system PATH.' . PHP_EOL;
+        echo 'Requirements: PHP (>=7.4) and Composer must be installed.' . PHP_EOL;
         break;
 }
 
@@ -82,28 +76,24 @@ function initCommand(array $argv): void
     chdir($projectDir);
 
     // Create subdirectories
-    $dirs = [
-        'config' . DIRECTORY_SEPARATOR . 'db',
-        'models',
-        'routers',
-    ];
+    $dirs = ['config/db', 'models', 'routers'];
     foreach ($dirs as $dir) {
         mkdir($dir, 0755, true);
         echo "Created directory: $dir" . PHP_EOL;
     }
 
-    // Copy entire config/ directory from templates
-    $templateConfigDir = __DIR__ . DIRECTORY_SEPARATOR . 'templates' . DIRECTORY_SEPARATOR . 'config';
+    // Copy config/ directory from templates
+    $templateConfigDir = __DIR__ . '/../templates/config';
     $destConfigDir = 'config';
     if (is_dir($templateConfigDir)) {
         recursiveCopy($templateConfigDir, $destConfigDir);
         echo "Copied config/ directory" . PHP_EOL;
     } else {
-        echo "Warning: templates/config/ not found. Please add it to the CLI tool." . PHP_EOL;
+        echo "Warning: templates/config/ not found. Skipping." . PHP_EOL;
     }
 
     // Generate .env file
-$envContent = <<<ENV
+    $envContent = <<<ENV
 SECRET_KEY=$secretKey
 DB_USERNAME=$dbUsername
 DB_PASSWORD=$dbPassword
@@ -114,43 +104,50 @@ ENV;
     echo 'Created .env file' . PHP_EOL;
 
     // Generate config.php
-    $configContent = require __DIR__ . '/src/configContent.php';
+    $configContent = file_exists(__DIR__ . '/../src/configContent.php')
+        ? require __DIR__ . '/../src/configContent.php'
+        : '<?php return [];';  // Fallback if missing
     file_put_contents('config.php', $configContent);
     echo 'Created config.php' . PHP_EOL;
 
     // Generate index.php
-    $indexContent = require __DIR__ . '/src/indexContent.php';
+    $indexContent = file_exists(__DIR__ . '/../src/indexContent.php')
+        ? require __DIR__ . '/../src/indexContent.php'
+        : '<?php echo "Hello from MyFramework!";';  // Fallback
     file_put_contents('index.php', $indexContent);
     echo 'Created index.php' . PHP_EOL;
 
     // Generate manage.php
     $manageContent = <<<PHP
 <?php
-
 require __DIR__ . '/vendor/autoload.php';
-use Reut\\DB\\Creator\\DatabaseCreator;
-
+use M4rc\\ReutCli\\DatabaseCreator;  // Adjust namespace
 \$newDB = new DatabaseCreator();
 \$newDB->Generate();
-
 PHP;
     file_put_contents('manage.php', $manageContent);
     echo 'Created manage.php' . PHP_EOL;
 
     // Copy composer.json
-    $templateComposer = __DIR__ . DIRECTORY_SEPARATOR . 'templates' . DIRECTORY_SEPARATOR . 'composer.json';
+    $templateComposer = __DIR__ . '/../templates/composer.json';
     if (file_exists($templateComposer)) {
         copy($templateComposer, 'composer.json');
         echo "Copied composer.json" . PHP_EOL;
     } else {
-        echo "Warning: templates/composer.json not found. Please add it manually." . PHP_EOL;
+        echo "Warning: templates/composer.json not found. Creating basic composer.json." . PHP_EOL;
+        $basicComposer = json_encode([
+            'name' => "myframework/$projectName",
+            'require' => ['php' => '>=7.4'],
+            'autoload' => ['psr-4' => ["MyFramework\\" => "src/"]]
+        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        file_put_contents('composer.json', $basicComposer);
     }
 
     echo PHP_EOL . 'Project initialized successfully!' . PHP_EOL;
     echo 'Next steps:' . PHP_EOL;
-    echo '- Run `composer install` in the project directory to set up autoloading.' . PHP_EOL;
-    echo '- Use `php manage.php generate:model Users` to create models, etc.' . PHP_EOL;
-    echo '- Or use `myframework manage.php generate:model Users` from this directory.' . PHP_EOL;
+    echo '- Run `composer install` in the project directory.' . PHP_EOL;
+    echo '- Use `php manage.php generate:model Users` to create models.' . PHP_EOL;
+    echo '- Or use `reut-cli manage.php generate:model Users` globally.' . PHP_EOL;
 }
 
 function prompt(string $message): string
