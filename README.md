@@ -109,6 +109,7 @@ Generate models or resources:
 php manage.php generate:model Users
 # Or, if CLI is installed globally:
 Reut manage.php generate:model Users
+```
 ## Usage
 
 - **Initialize a project** (run anywhere):  
