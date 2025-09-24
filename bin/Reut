@@ -23,8 +23,9 @@ switch ($command) {
         initCommand($argv);
         break;
     case '-v':
-        echo "MyFramework CLI v1.0.0" . PHP_EOL;
-        exit(0);  // Exit with success code
+    case 'version':
+        echo "MyFramework CLI v1.0.2" . PHP_EOL;
+        exit(0);
     case 'manage.php':
         $manageFile = getcwd() . DIRECTORY_SEPARATOR . 'manage.php';
         if (!file_exists($manageFile)) {
@@ -35,15 +36,34 @@ switch ($command) {
         $cmd = '"' . PHP_BINARY . '" "' . $manageFile . '" ' . implode(' ', array_map('escapeshellarg', $args));
         passthru($cmd, $exitCode);
         exit($exitCode);
+    case 'create':
+    case 'status':
+    case 'generate:routes':
+    case 'generate:model':
+    case 'migrate':
+        $manageFile = getcwd() . DIRECTORY_SEPARATOR . 'manage.php';
+        if (!file_exists($manageFile)) {
+            echo "Error: manage.php not found in current directory." . PHP_EOL;
+            exit(1);
+        }
+        $args = array_slice($argv, 1);
+        $cmd = '"' . PHP_BINARY . '" "' . $manageFile . '" ' . implode(' ', array_map('escapeshellarg', $args));
+        passthru($cmd, $exitCode);
+        exit($exitCode);
+    case '-h':
     case 'help':
     default:
-        echo 'Reut CLI Tool v1.0.0' . PHP_EOL;
-        echo 'Commands:' . PHP_EOL;
-        echo '  init                    Initialize a new project (interactive)' . PHP_EOL;
-        echo '  manage.php <command>    Run a manage.php command (e.g., generate:model Users)' . PHP_EOL;
-        echo '  -v                      Show version' . PHP_EOL;
-        echo '  help                    Show this help message' . PHP_EOL;
-        echo 'Requirements: PHP (>=7.4) and Composer must be installed.' . PHP_EOL;
+        echo "Reut CLI Tool v1.0.2" . PHP_EOL;
+        echo "Usage: php manage.php <command>" . PHP_EOL;
+        echo "Commands:" . PHP_EOL;
+        echo "  create            - Initial start of project or add tables from models to the database" . PHP_EOL;
+        echo "  status            - Check for pending migrations in the models" . PHP_EOL;
+        echo "  generate:routes   - Generate routes for each model into the route/ folder" . PHP_EOL;
+        echo "  generate:model    - Generate model class, pass the model name into the console" . PHP_EOL;
+        echo "  migrate           - Apply migrations to the table from changes in the model definition" . PHP_EOL;
+        echo "  -v, version       - Show CLI version" . PHP_EOL;
+        echo "  -h, help          - Show this help message" . PHP_EOL;
+        echo "Requirements: PHP (>=7.4) and Composer must be installed." . PHP_EOL;
         break;
 }
 
@@ -121,7 +141,7 @@ ENV;
     $manageContent = <<<PHP
 <?php
 require __DIR__ . '/vendor/autoload.php';
-use M4rc\\ReutCli\\DatabaseCreator;  // Adjust namespace
+use Reut\DB\Creator\DatabaseCreator;
 \$newDB = new DatabaseCreator();
 \$newDB->Generate();
 PHP;
@@ -147,7 +167,7 @@ PHP;
     echo 'Next steps:' . PHP_EOL;
     echo '- Run `composer install` in the project directory.' . PHP_EOL;
     echo '- Use `php manage.php generate:model Users` to create models.' . PHP_EOL;
-    echo '- Or use `reut-cli manage.php generate:model Users` globally.' . PHP_EOL;
+    echo '- Or use `Reut manage.php generate:model Users` globally.' . PHP_EOL;
 }
 
 function prompt(string $message): string

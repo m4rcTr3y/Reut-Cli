@@ -109,14 +109,40 @@ Generate models or resources:
 php manage.php generate:model Users
 # Or, if CLI is installed globally:
 Reut manage.php generate:model Users
-```
-
 ## Usage
 
-- Initialize a project: `Reut init`
-- Run manage commands: `Reut manage.php generate:model Users`
-- View version: `Reut -v`
-- Show help: `Reut help`
+- **Initialize a project** (run anywhere):  
+    ```bash
+    Reut init
+    ```
+
+- **Project directory commands** (run inside your project folder):  
+    ```bash
+    Reut create                # Initial setup or sync models to database tables
+    Reut status                # Check for pending migrations in models
+    Reut generate:routes       # Generate routes for each model into the route/ folder
+    Reut generate:model Users  # Generate a model class (replace 'Users' with your model name)
+    Reut migrate               # Apply migrations from model changes to the database
+    Reut -v                    # Show CLI version
+    Reut -h                    # Show help message
+    ```
+    or
+    ```bash
+    php manage.php create
+    php manage.php status
+    php manage.php generate:routes
+    php manage.php generate:model Users
+    php manage.php migrate
+    php manage.php -v
+    php manage.php -h
+    ```
+
+- **Global CLI commands** (if installed globally):  
+    ```bash
+    Reut <command>
+    Reut -v
+    Reut help
+    ```
 
 ## Troubleshooting
 

@@ -17,5 +17,11 @@
     "bin":["bin/Reut"],
     "require": {
         "php":">=7.4"
+    },
+     "keywords": ["framework", "cli", "php"],
+    "homepage": "https://github.com/m4rcTr3y/Reut-Cli",
+    "support": {
+        "email": "marctrevis61@proton.me",
+        "issues": "https://github.com/m4rcTr3y/Reut-Cli/issues"
     }
 }
