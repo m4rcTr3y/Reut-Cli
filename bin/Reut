@@ -149,6 +149,7 @@ PHP;
     echo 'Created manage.php' . PHP_EOL;
 
     // Copy composer.json
+    // Copy composer.json
     $templateComposer = __DIR__ . '/../templates/composer.json';
     if (file_exists($templateComposer)) {
         copy($templateComposer, 'composer.json');
@@ -161,6 +162,15 @@ PHP;
             'autoload' => ['psr-4' => ["MyFramework\\" => "src/"]]
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
         file_put_contents('composer.json', $basicComposer);
+    }
+
+    // Copy .htaccess
+    $templateHtaccess = __DIR__ . '/../templates/.htaccess';
+    if (file_exists($templateHtaccess)) {
+        copy($templateHtaccess, '.htaccess');
+        echo "Copied .htaccess" . PHP_EOL;
+    } else {
+        echo "Warning: templates/.htaccess not found. Skipping .htaccess copy." . PHP_EOL;
     }
 
     echo PHP_EOL . 'Project initialized successfully!' . PHP_EOL;
