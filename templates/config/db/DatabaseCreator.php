@@ -9,15 +9,20 @@ class DatabaseCreator{
     public static function Generate(){
         global $argv;
         // $data = $argc;
-        if ($argv < 2) {
-            echo "\nUsage: php script.php <command>\n";
+        if (count($argv) < 2) {
+            echo "\nUsage: php manage.php <command>\n";
             echo "Commands:\n";
-            echo "  create  - Initial start of project\n";
-            echo "  migrate  - create tables if not created in the database\n";
+            echo "  create            - Initial start of project or add tables from models to the database\n";
+            echo "  status            - Check for pending migrations in the models\n";
+            echo "  generate:routes   - Generate routes for each model into the route/ folder\n";
+            echo "  generate:model    - Generate model class, pass the model name into the console\n";
+            echo "  migrate           - Apply migrations to the table from changes in the model definition\n";
+            echo "  -v, version       - Show CLI version\n";
+            echo "  -h, help          - Show this help message\n";
             exit(1);
         }
         
-        $command = (String) $argv[1];
+        $command = (String) $argv[1];                                                                                  
         
         switch ($command) {
             case 'create':
@@ -36,14 +41,25 @@ class DatabaseCreator{
             case 'status':
                 require dirname(__DIR__) . '/checkmigration.php';
                 break;
-            default:
-                echo "Invalid command. Usage: php script.php <command>\n";
+            case '-h':
+            case 'help':
+                echo "Usage: php manage.php <command>\n";
                 echo "Commands:\n";
-                echo "  create  - Initial start of project or add tables from models to the database\n";
-                echo "  status  - check for pending migrations in the models\n";
-                echo "  generate:routes  - generate routes for each model into the route/ folder \n";
-                echo "  generate:model  - generate model class, you pass the model name into the console \n";
-                echo "  migrate - apply migrations to the table from changes in the model definition\n";
+                echo "  create            - Initial start of project or add tables from models to the database\n";
+                echo "  status            - Check for pending migrations in the models\n";
+                echo "  generate:routes   - Generate routes for each model into the route/ folder\n";
+                echo "  generate:model    - Generate model class, pass the model name into the console\n";
+                echo "  migrate           - Apply migrations to the table from changes in the model definition\n";
+                echo "  -v, version       - Show CLI version\n";
+                echo "  -h, help          - Show this help message\n";
+                break;
+            case '-v':
+            case 'version':
+                echo "Reut CLI version 1.0.2\n";
+                break;
+            default:
+                echo "Invalid command.\n";
+                echo "Use 'php manage.php -h' or 'php manage.php help' for usage information.\n";
                 exit(1);
         }
     }
