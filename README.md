@@ -106,8 +106,6 @@ composer install
 Generate models or resources:
 
 ```bash
-php manage.php generate:model Users
-# Or, if CLI is installed globally:
 Reut manage.php generate:model Users
 ```
 ## Usage
@@ -127,16 +125,7 @@ Reut manage.php generate:model Users
     Reut -v                    # Show CLI version
     Reut -h                    # Show help message
     ```
-    or
-    ```bash
-    php manage.php create
-    php manage.php status
-    php manage.php generate:routes
-    php manage.php generate:model Users
-    php manage.php migrate
-    php manage.php -v
-    php manage.php -h
-    ```
+
 
 - **Global CLI commands** (if installed globally):  
     ```bash
