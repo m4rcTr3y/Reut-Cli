@@ -200,7 +200,7 @@ PHP;
     echo PHP_EOL . 'Project initialized successfully!' . PHP_EOL;
     echo 'Next steps:' . PHP_EOL;
     echo '- Run `composer install` in the project directory.' . PHP_EOL;
-    echo '- Use `php manage.php generate:model Users` to create models.' . PHP_EOL;
+    echo '- Use `Reut generate:model Users` to create models.' . PHP_EOL;
     echo '- Or use `Reut manage.php generate:model Users` globally.' . PHP_EOL;
 }
 
