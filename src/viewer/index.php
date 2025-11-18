@@ -6,6 +6,8 @@ declare(strict_types=1);
  * This script is copied into each new project under the /viewer directory.
  */
 
+
+
 $projectRoot = dirname(__DIR__);
 
 require $projectRoot . '/vendor/autoload.php';
@@ -91,7 +93,7 @@ if (is_dir($modelsDir)) {
     <meta charset="UTF-8">
     <title>REUT Schema Viewer</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="stylesheet" href="assets/style.css">
+    <link rel="stylesheet" href="/assets/style.css">
 </head>
 <body>
     <header>
