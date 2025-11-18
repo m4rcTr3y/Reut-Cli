@@ -12,8 +12,8 @@ namespace Reut\DB\Types;
  *
  */
 class Date extends ColumnType{
-    public function __construct(bool $nullable = true, $default = null,bool $isPrimay=false){
-        parent::__construct($nullable,$default,$isPrimay);
+    public function __construct(bool $nullable = true, string|\DateTimeInterface|null $default = null,bool $isPrimary=false){
+        parent::__construct($nullable,$default,$isPrimary);
         $this->name = "DATE";
     }
 }

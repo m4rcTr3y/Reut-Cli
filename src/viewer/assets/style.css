@@ -1,0 +1,127 @@
+:root {
+    font-family: "Segoe UI", system-ui, sans-serif;
+    color-scheme: light dark;
+    color: #0c111d;
+    background-color: #f4f6fb;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    padding: 2rem;
+    background: radial-gradient(circle, #ffffff 0%, #eef2ff 100%);
+}
+
+header, footer {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+h1, h2, h3 {
+    margin: 0;
+}
+
+.notice, .empty-state, .card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 15px 35px rgba(15, 23, 42, 0.08);
+}
+
+.card__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 1rem;
+}
+
+.badge-group {
+    display: flex;
+    gap: .5rem;
+    flex-wrap: wrap;
+}
+
+.badge {
+    padding: 0.35rem 0.75rem;
+    border-radius: 999px;
+    font-size: 0.85rem;
+    background: #e2e8f0;
+    color: #0f172a;
+}
+
+.badge--success {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.badge--muted {
+    background: #e2e8f0;
+    color: #475569;
+}
+
+.muted {
+    color: #64748b;
+    margin: 0.25rem 0 0;
+}
+
+.columns-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 1rem;
+    margin: 1rem 0;
+}
+
+.column-card {
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 1rem;
+    background: #f8fafc;
+}
+
+.column-card__title {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.chip {
+    background: #2563eb;
+    color: #fff;
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+}
+
+.fk-list {
+    list-style: none;
+    padding: 0;
+    margin: 0.5rem 0 0;
+}
+
+.fk-list li {
+    padding: 0.35rem 0;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+code {
+    background: #0f172a;
+    color: #f8fafc;
+    padding: 0.15rem 0.35rem;
+    border-radius: 6px;
+}
+
+@media (max-width: 600px) {
+    body {
+        padding: 1rem;
+    }
+
+    .card__header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
+

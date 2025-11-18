@@ -21,12 +21,12 @@ namespace Reut\DB\Types;
 
 class Integer extends ColumnType
 {
-    public function __construct(bool $nullable = true, bool $isPrimay = false, bool $autoIncrement = false, string|null $default)
+    public function __construct(bool $nullable = true, bool $isPrimary = false, bool $autoIncrement = false, int|string|null $default = null)
     {
         parent::__construct(
             $nullable, 
             $default, 
-            $isPrimay, 
+            $isPrimary, 
             $autoIncrement);
         $this->name = "INTEGER";
     }

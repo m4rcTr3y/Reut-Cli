@@ -38,6 +38,12 @@ class DatabaseCreator{
             case 'migrate':
                 require dirname(__DIR__) . '/update.php';
                 break;
+            case 'view':
+                require dirname(__DIR__) . '/view.php';
+                break;
+            case 'dev':
+                require dirname(__DIR__) . '/dev.php';
+                break;
             case 'status':
                 require dirname(__DIR__) . '/checkmigration.php';
                 break;

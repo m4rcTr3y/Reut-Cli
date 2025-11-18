@@ -13,8 +13,8 @@ namespace Reut\DB\Types;
  */
  
 class Text extends ColumnType{
-    public function __construct($nullable = true, $default = null,$isPrimay=false){
-        parent::__construct($nullable,$default,$isPrimay);
+    public function __construct(bool $nullable = true, ?string $default = null,bool $isPrimary=false){
+        parent::__construct($nullable,$default,$isPrimary);
         $this->name = "TEXT";
     }
 }

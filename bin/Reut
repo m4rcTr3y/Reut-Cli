@@ -36,11 +36,13 @@ switch ($command) {
         $cmd = '"' . PHP_BINARY . '" "' . $manageFile . '" ' . implode(' ', array_map('escapeshellarg', $args));
         passthru($cmd, $exitCode);
         exit($exitCode);
-    case 'create':
+case 'create':
     case 'status':
     case 'generate:routes':
     case 'generate:model':
-    case 'migrate':
+case 'migrate':
+case 'view':
+case 'dev':
         $manageFile = getcwd() . DIRECTORY_SEPARATOR . 'manage.php';
         if (!file_exists($manageFile)) {
             echo "Error: manage.php not found in current directory." . PHP_EOL;
@@ -61,6 +63,8 @@ switch ($command) {
         echo "  generate:routes   - Generate routes for each model into the route/ folder" . PHP_EOL;
         echo "  generate:model    - Generate model class, pass the model name into the console" . PHP_EOL;
         echo "  migrate           - Apply migrations to the table from changes in the model definition" . PHP_EOL;
+        echo "  dev               - Start the local API dev server (built-in PHP server)" . PHP_EOL;
+        echo "  view              - Spin up a local HTML viewer for your models" . PHP_EOL;
         echo "  -v, version       - Show CLI version" . PHP_EOL;
         echo "  -h, help          - Show this help message" . PHP_EOL;
         echo "Requirements: PHP (>=7.4) and Composer must be installed." . PHP_EOL;
@@ -110,6 +114,26 @@ function initCommand(array $argv): void
         echo "Copied config/ directory" . PHP_EOL;
     } else {
         echo "Warning: templates/config/ not found. Skipping." . PHP_EOL;
+    }
+
+    // Copy the viewer scaffolding so the view command can serve HTML docs
+    $viewerSourceDir = __DIR__ . '/../src/viewer';
+    $viewerDestination = 'viewer';
+    if (is_dir($viewerSourceDir)) {
+        recursiveCopy($viewerSourceDir, $viewerDestination);
+        echo "Copied viewer/ directory" . PHP_EOL;
+    } else {
+        echo "Warning: src/viewer not found. Viewer command will attempt runtime scaffolding." . PHP_EOL;
+    }
+
+    // Copy devserver scaffolding for the dev command
+    $devSourceDir = __DIR__ . '/../src/devserver';
+    $devDestination = 'devserver';
+    if (is_dir($devSourceDir)) {
+        recursiveCopy($devSourceDir, $devDestination);
+        echo "Copied devserver/ directory" . PHP_EOL;
+    } else {
+        echo "Warning: src/devserver not found. Dev command will attempt runtime scaffolding." . PHP_EOL;
     }
 
     // Generate .env file

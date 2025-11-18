@@ -3,7 +3,6 @@ declare(strict_types=1);
 
 $modelsDir = __DIR__ . '/../models/';
 $modelName = $argv[2] ?? '';
-$hasRelationships = false;
 
 // Get model name from argument or prompt
 if (empty($modelName)) {
@@ -14,12 +13,6 @@ if (empty($modelName)) {
     $handle = fopen("php://stdin", "r");
 }
 
-// Prompt for relationship information
-echo "Does this table have relationships? (y/n): ";
-$answer = trim(fgets($handle));
-if ($answer === 'y' || $answer === 'Y') {
-    $hasRelationships = true;
-}
 fclose($handle);
 
 // Validate model name
@@ -42,8 +35,6 @@ if (file_exists($modelFile) && !in_array('--force', $argv)) {
 }
 
 // Model class template with explanatory comments
-$mytalbeRelations = $hasRelationships?'true':'false';
-
 $modelTemplate = <<<EOT
 <?php
 declare(strict_types=1);
@@ -65,14 +56,14 @@ class {$modelName}Table extends DataBase
         // - \$config: Database connection settings
         // - []: Initial empty columns array (to be populated below)
         // - '{$modelName}': The table name
-        // - hasRelationships: Whether the table has relationships
+        // - hasRelationships: Automatically inferred when calling addForeignKey()
         // - []: File fields array (for file uploads, if any)
         // - ['all']: Disabled routes array (routes to disable for this model)
         parent::__construct(
             \$config,
             [],
             '{$modelName}',
-            {$mytalbeRelations},
+            false,
             [],
             ['all']
         );
@@ -88,7 +79,8 @@ class {$modelName}Table extends DataBase
 
         // TODO: Add your custom column definitions here
 
-        // TODO: Add your relationship definitions here (e.g., hasMany, belongsTo)
+        // TODO: Define your relationships using the addForeignKey helper, for example:
+        // \$this->addForeignKey('user_id', 'Users');
     }
 
     // TODO: Add your custom methods here (e.g., custom queries, business logic)
