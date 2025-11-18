@@ -68,7 +68,7 @@ try {
 
         if (class_exists($className)) {
             $tableInstance = new $className($config);
-            if (property_exists($tableInstance, 'hasRelationships') && $tableInstance->hasRelationships) {
+            if (method_exists($tableInstance, 'hasRelationships') && $tableInstance->hasRelationships()) {
                 $withRelations[] = $tableInstance;
             } else {
                 $noRelations[] = $tableInstance;
@@ -78,7 +78,7 @@ try {
         }
     }
 
-    usort($withRelations, fn($a, $b) => $a->relationships <=> $b->relationships);
+    usort($withRelations, fn($a, $b) => $a->getRelationshipCount() <=> $b->getRelationshipCount());
 
     // Function to apply migrations for a table
     function applyMigration($baseDb, $tableInstance, $currentBatch): bool

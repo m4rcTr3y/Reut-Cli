@@ -106,8 +106,6 @@ composer install
 Generate models or resources:
 
 ```bash
-php manage.php generate:model Users
-# Or, if CLI is installed globally:
 Reut manage.php generate:model Users
 ```
 ## Usage
@@ -124,19 +122,12 @@ Reut manage.php generate:model Users
     Reut generate:routes       # Generate routes for each model into the route/ folder
     Reut generate:model Users  # Generate a model class (replace 'Users' with your model name)
     Reut migrate               # Apply migrations from model changes to the database
+    Reut dev --port=9000       # Start the built-in PHP dev server (host defaults to 0.0.0.0)
+    Reut view --port=8088      # Start the HTML schema viewer (optional host/port flags)
     Reut -v                    # Show CLI version
     Reut -h                    # Show help message
     ```
-    or
-    ```bash
-    php manage.php create
-    php manage.php status
-    php manage.php generate:routes
-    php manage.php generate:model Users
-    php manage.php migrate
-    php manage.php -v
-    php manage.php -h
-    ```
+
 
 - **Global CLI commands** (if installed globally):  
     ```bash
@@ -144,6 +135,17 @@ Reut manage.php generate:model Users
     Reut -v
     Reut help
     ```
+
+### Defining Relationships
+
+- Define foreign keys directly inside your model classes using `addForeignKey`, e.g.:
+    ```php
+    $this->addForeignKey('user_id', 'Users');
+    ```
+- Each call automatically marks the table as relational and contributes to the relationship count so migrations know to create parent tables first.
+
+- The viewer command copies the `/viewer` folder into new projects and serves it with the built-in PHP server so you can inspect tables visually.
+- Use `Reut dev --port=9000 --host=0.0.0.0` (or `php manage.php dev`) to spin up a PHP dev server with the bundled router that falls back to `index.php`.
 
 ## Troubleshooting
 

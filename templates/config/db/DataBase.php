@@ -39,6 +39,7 @@ class DataBase
     public $fileFields;
 
     public $columns;
+    protected array $foreignKeys = [];
 
     public function __construct(array $config, $columns = [], ?String $tableName = null, Bool $hasRelationships = false, $relationships = 0, array $fileFields = [], array $disabledRoutes = [])
     {
@@ -49,6 +50,54 @@ class DataBase
         $this->relationships = $relationships;
         $this->disabledRoutes = $disabledRoutes;
         $this->fileFields = $fileFields;
+    }
+
+    /**
+     * Register a foreign key constraint for the table.
+     *
+     * @param string $column            The local column that holds the foreign key
+     * @param string $referencedTable   The referenced table name
+     * @param string $referencedColumn  The referenced column name
+     * @param string $onDelete          ON DELETE behavior (e.g., CASCADE, SET NULL)
+     * @param string $onUpdate          ON UPDATE behavior
+     * @param string|null $constraint   Optional constraint name
+     * @return $this
+     */
+    public function addForeignKey(
+        string $column,
+        string $referencedTable,
+        string $referencedColumn = 'id',
+        string $onDelete = 'CASCADE',
+        string $onUpdate = 'CASCADE',
+        ?string $constraint = null
+    ): self {
+        if (!isset($this->columns[$column])) {
+            throw new \InvalidArgumentException("Column '{$column}' must be defined before adding a foreign key.");
+        }
+
+        $this->foreignKeys[] = [
+            'column' => $column,
+            'referenced_table' => $referencedTable,
+            'referenced_column' => $referencedColumn,
+            'on_delete' => strtoupper($onDelete),
+            'on_update' => strtoupper($onUpdate),
+            'constraint' => $constraint
+        ];
+
+        $this->hasRelationships = true;
+        $this->relationships = max($this->relationships, count($this->foreignKeys));
+
+        return $this;
+    }
+
+    public function hasRelationships(): bool
+    {
+        return !empty($this->foreignKeys) || (bool)$this->hasRelationships;
+    }
+
+    public function getRelationshipCount(): int
+    {
+        return !empty($this->foreignKeys) ? count($this->foreignKeys) : (int)$this->relationships;
     }
 
     // todo: execute the connect function by default on call of the function
@@ -110,10 +159,47 @@ class DataBase
             }
         }
 
+        $constraintDefinitions = $this->buildForeignKeySql();
+
         $sql = "CREATE TABLE IF NOT EXISTS {$this->tableName} (\n";
-        $sql .= implode(",\n", $columnDefinitions);
-        $sql .= "\n);";
+        $sql .= implode(",\n", array_merge($columnDefinitions, $constraintDefinitions));
+        $sql .= "\n) ENGINE=InnoDB;";
         return $sql;
+    }
+
+    protected function buildForeignKeySql(): array
+    {
+        $sql = [];
+        foreach ($this->foreignKeys as $index => $fk) {
+            $constraintName = $fk['constraint']
+                ? $fk['constraint']
+                : sprintf(
+                    'fk_%s_%s_%d',
+                    strtolower($this->tableName),
+                    strtolower($fk['column']),
+                    $index + 1
+                );
+
+            $sql[] = sprintf(
+                "  CONSTRAINT %s FOREIGN KEY (%s) REFERENCES %s (%s) ON DELETE %s ON UPDATE %s",
+                $constraintName,
+                $fk['column'],
+                $fk['referenced_table'],
+                $fk['referenced_column'],
+                $fk['on_delete'],
+                $fk['on_update']
+            );
+        }
+
+        return $sql;
+    }
+
+    /**
+     * Expose registered foreign keys for external tooling (e.g., the viewer).
+     */
+    public function getForeignKeys(): array
+    {
+        return $this->foreignKeys;
     }
 
     public function createDatabase($dbname)

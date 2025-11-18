@@ -19,13 +19,18 @@ namespace Reut\DB\Types;
 
 abstract class ColumnType{
 
-    protected $name;
-    protected $nullable;
-    protected  $default;
-    protected $autoIncrement;
-    protected $isPrimary;
+    protected string $name;
+    protected bool $nullable;
+    protected mixed $default;
+    protected bool $autoIncrement;
+    protected bool $isPrimary;
 
-    public function __construct(bool $nullable=true,string|null $default = null,bool $isPrimary=false,bool $autoIncrement=false){
+    public function __construct(
+        bool $nullable = true,
+        mixed $default = null,
+        bool $isPrimary = false,
+        bool $autoIncrement = false
+    ){
         $this->nullable = $nullable;
         $this->default = $default;
         $this->isPrimary = $isPrimary;
@@ -36,29 +41,62 @@ abstract class ColumnType{
      * returns the Sql of the field, the returned is a string
      *@return string;
      */
-    public function getSql(){
+    public function getSql(): string
+    {
+        return $this->buildBaseSql() . $this->getAdditionalSql();
+    }
+
+    protected function buildBaseSql(): string
+    {
         $baseSql = $this->name;
-        if(!$this->nullable){
+        if (!$this->nullable) {
             $baseSql .= " NOT NULL";
         }
-        if($this->isPrimary){
+        if ($this->isPrimary) {
             $baseSql .= " PRIMARY KEY";
         }
-        if($this->autoIncrement){
+        if ($this->autoIncrement) {
             $baseSql .= " AUTO_INCREMENT";
         }
-        if($this->default !== null){
-            $baseSql.= " DEFAULT ".(is_string($this->default)?"'{$this->default}" : $this->default);
+        if ($this->default !== null) {
+            $baseSql .= " DEFAULT " . $this->formatDefaultValue($this->default);
         }
 
         return $baseSql;
+    }
+
+    protected function getAdditionalSql(): string
+    {
+        return '';
+    }
+
+    protected function formatDefaultValue(mixed $value): string
+    {
+        if ($value instanceof \DateTimeInterface) {
+            return "'" . $value->format('Y-m-d H:i:s') . "'";
+        }
+
+        if (is_bool($value)) {
+            return $value ? 'TRUE' : 'FALSE';
+        }
+
+        if (is_numeric($value)) {
+            return (string) $value;
+        }
+
+        if (is_array($value)) {
+            return "'" . addslashes(json_encode($value)) . "'";
+        }
+
+        return "'" . addslashes((string) $value) . "'";
     }
 
     /**
      * If the column or field is a primary key
      * @return bool
      */
-    public function isPrimaryKey(){
+    public function isPrimaryKey(): bool
+    {
         return $this->isPrimary;
     }
 
