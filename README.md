@@ -68,7 +68,7 @@ If you see a stability error, install the development version:
 composer global require m4rc/reut_cli:dev-main
 ```
 
-> **Note:** Stable version (`v1.0.0`) coming soon. See [Packagist](https://packagist.org/packages/m4rc/reut_cli).
+> **Note:** Stable version (`v1.0.3`) coming soon. See [Packagist](https://packagist.org/packages/m4rc/reut_cli).
 
 ### 3. Initialize a New REUT Project
 
@@ -147,11 +147,16 @@ Reut manage.php generate:model Users
 - The viewer command copies the `/viewer` folder into new projects and serves it with the built-in PHP server so you can inspect tables visually.
 - Use `Reut dev --port=9000 --host=0.0.0.0` (or `php manage.php dev`) to spin up a PHP dev server with the bundled router that falls back to `index.php`.
 
+
+
 ## Troubleshooting
 
 - **Command not found**: Ensure Composer’s `vendor/bin` is in your PATH.
 - **Stability error**: Use `m4rc/reut_cli:dev-main` or check Packagist for updates.
-- **Missing files**: Ensure your project includes required templates and source files. Contact the maintainer if issues persist.
+- **Missing files**: Ensure your project includes required templates and source files. Contact the 
+- APP_ENV=development   # Set to "production" on live servers to hide detailed stack traces and enable production optimizations (caching, tighter error logging). Never run with debug mode enabled in public environments.
+
+maintainer if issues persist.
 - **Runtime errors**: Run commands with `--verbose` for more details.
 
 ## Contributing

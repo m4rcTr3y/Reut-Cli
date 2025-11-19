@@ -69,7 +69,7 @@ require_once __DIR__.'/registerRoutes.php';
 
                                     \$instance = new {$modelName}Table(\$this->config);
 
-                                    //get all {$modelName}s from database
+                                    //get all {$modelName}s from table " http://endpoint/{$lowercase}/all
                                     \$group->get( '/all', function (Request \$request, Response \$response) use (\$instance) {
                                         \$params = \$request->getQueryParams();
                                         \$page = \$params['page'] ?? 1;
@@ -79,7 +79,7 @@ require_once __DIR__.'/registerRoutes.php';
                                         return \$response->withHeader('Content-Type', 'application/json');
                                     });
 
-                                    //Get single {$modelName} from the table " http://endpoint/{$modelName}/find/id
+                                    //Get single {$modelName} from the table " http://endpoint/{$lowercase}/find/id
                                     \$group->get('/find',function (Request \$request, Response \$response, \$args) use (\$instance) {
                                         \$id = \$args['id'];
                                         \$data = \$instance->findOne(['id' => \$id]);
@@ -93,8 +93,8 @@ require_once __DIR__.'/registerRoutes.php';
                                         return \$response->withHeader('Content-Type', 'application/json');
                                     });
 
-                                    //Update single {$modelName} from the table " http://endpoint/{$modelName}/update/id
-                                    \$group->put( 'update',function (Request \$request, Response \$response, \$args) use (\$instance) {
+                                    //Update single {$modelName} from the table " http://endpoint/{$lowercase}/update/id
+                                    \$group->put( '/update/{id}',function (Request \$request, Response \$response, \$args) use (\$instance) {
                                         \$id = \$args['id'];
                                         \$input = \$request->getParsedBody();
                                         \$result = \$instance->update(\$input, ['id' => \$id]);
@@ -102,8 +102,8 @@ require_once __DIR__.'/registerRoutes.php';
                                         return \$response->withHeader('Content-Type', 'application/json');
                                     });
 
-                                    //delete single {$modelName} from the table " http://endpoint/{$modelName}/delete/id
-                                    \$group->delete('delete', function (Request \$request, Response \$response,\$args) use (\$instance) {
+                                    //delete single {$modelName} from the table " http://endpoint/{$lowercase}/delete/id
+                                    \$group->delete('/delete/{id}', function (Request \$request, Response \$response,\$args) use (\$instance) {
                                         \$id = \$args['id'];
                                         \$result = \$instance->delete(['id' => \$id]);
                                         \$response->getBody()->write(json_encode(['status' => \$result]));
