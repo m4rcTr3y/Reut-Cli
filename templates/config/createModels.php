@@ -77,8 +77,7 @@ class {$modelName}Table extends DataBase
             null   // Default value
         ));
 
-        // TODO: Add your custom column definitions here
-
+      
         // TODO: Define your relationships using the addForeignKey helper, for example:
         // \$this->addForeignKey('user_id', 'Users');
     }

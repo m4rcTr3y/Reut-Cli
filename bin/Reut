@@ -24,7 +24,7 @@ switch ($command) {
         break;
     case '-v':
     case 'version':
-        echo "MyFramework CLI v1.0.2" . PHP_EOL;
+        echo "Reut CLI v1.0.3" . PHP_EOL;
         exit(0);
     case 'manage.php':
         $manageFile = getcwd() . DIRECTORY_SEPARATOR . 'manage.php';
@@ -55,7 +55,7 @@ case 'dev':
     case '-h':
     case 'help':
     default:
-        echo "Reut CLI Tool v1.0.2" . PHP_EOL;
+        echo "Reut CLI Tool v1.0.3" . PHP_EOL;
         echo "Usage: php manage.php <command>" . PHP_EOL;
         echo "Commands:" . PHP_EOL;
         echo "  create            - Initial start of project or add tables from models to the database" . PHP_EOL;
@@ -143,6 +143,7 @@ DB_USERNAME=$dbUsername
 DB_PASSWORD=$dbPassword
 DB_NAME=$dbName
 DB_TYPE=$dbType
+APP_ENV=development
 ENV;
     file_put_contents('.env', $envContent);
     echo 'Created .env file' . PHP_EOL;
