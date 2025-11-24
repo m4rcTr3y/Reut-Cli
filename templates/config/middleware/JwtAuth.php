@@ -91,7 +91,7 @@ class JwtAuth
         $authHeader = $request->getHeader('Authorization');
         if (!$authHeader) {
             $response->getBody()->write(json_encode(['error' => 'Not allowed','action'=>'login']));
-            return $response->withStatus(403)->withHeader('Constent-Type','application/json');
+            return $response->withStatus(403)->withHeader('Content-Type','application/json');
         }
 
         $token = str_replace('Bearer ', '', $authHeader[0]);
@@ -99,7 +99,7 @@ class JwtAuth
 
         if (!$decoded) {
             $response->getBody()->write( json_encode(['error' => 'Token expired or invalid', 'action' => 'refresh_token']));
-            return $response->withStatus(401)->withHeader('Constent-Type','application/json');
+            return $response->withStatus(401)->withHeader('Content-Type','application/json');
         }
         
         //$stmt = $this->pdo->prepare('SELECT role FROM accounts WHERE userID = ?');

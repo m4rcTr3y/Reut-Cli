@@ -12,10 +12,12 @@ use Slim\Psr7\Response as SlimResponse;
 class AuthMiddleware
 {
     protected $app;
+    private string $secretKey;
 
     public function __construct($app)
     {
         $this->app = $app;
+        $this->secretKey = $_ENV['SECRET_KEY'] ?? '';
     }
 
     public function __invoke(Request $request, RequestHandler $handler): Response
@@ -29,7 +31,7 @@ class AuthMiddleware
         $token = str_replace('Bearer ', '', $authHeader[0]);
 
         try {
-            $decoded = JWT::decode($token, new Key('your_secret_key', 'HS256'));
+            $decoded = JWT::decode($token, new Key($this->secretKey, 'HS256'));
             $request = $request->withAttribute('decoded_token_data', (array) $decoded);
         } catch (\Exception $e) {
             return $this->unauthorizedResponse();

@@ -48,12 +48,42 @@ function RegisterRoutes(String $configDir, String $routersDir)
         $registers .=" new {$router}(\$app,\$config);\n";
     }
 
+    // Check if auth is enabled
+    $authEnabled = "(\$_ENV['REUT_AUTH_ENABLED'] ?? 'true') === 'true'";
+    $authUses = '';
+    $authRegisters = '';
+    
+    if (file_exists(__DIR__ . '/../auth.php')) {
+        $authUses = "use Reut\\Auth\\AuthRouter;\n";
+        $authRegisters = "
+        // Register built-in authentication routes
+        if ({$authEnabled}) {
+            \$authConfig = require __DIR__ . '/../auth.php';
+            new AuthRouter(\$app, \$config, \$authConfig);
+        }
+        ";
+    }
+
+    // Check if docs are enabled
+    $docsEnabled = "(\$_ENV['REUT_DOCS_ENABLED'] ?? 'true') === 'true'";
+    $docsUses = "use Reut\\Router\\DocsController;\n";
+    $docsRegisters = "
+        // Register API documentation endpoint
+        if ({$docsEnabled}) {
+            \$app->get('/docs', [DocsController::class, 'index']);
+        }
+        ";
+
     $routesTemplate = <<<EOT
                         <?php
                         use Slim\App as App; 
                         {$uses}
+                        {$authUses}
+                        {$docsUses}
                         return function (App \$app,Array \$config) {
                         {$registers}
+                        {$authRegisters}
+                        {$docsRegisters}
                         };
                         EOT;
 

@@ -33,23 +33,24 @@ class DataBase
     public $tableName;
     public $hasRelationships;
     public $relationships;
-    public $schema;
     public $results;
     public $disabledRoutes;
     public $fileFields;
 
-    public $columns;
+    public array $columns = [];
+    public array $protectedColumns = ['created_at', 'updated_at'];
     protected array $foreignKeys = [];
 
-    public function __construct(array $config, $columns = [], ?String $tableName = null, Bool $hasRelationships = false, $relationships = 0, array $fileFields = [], array $disabledRoutes = [])
+    public function __construct(array $config, $columns = [], ?String $tableName = null, Bool $hasRelationships = false, $relationships = 0, array $fileFields = [], array $disabledRoutes = [], array $protectedColumns = ['created_at', 'updated_at'])
     {
         $this->config = $config;
         $this->tableName = $tableName;
         $this->hasRelationships = $hasRelationships;
-        $this->schema = $columns;
+        $this->columns = $columns ?? [];
         $this->relationships = $relationships;
         $this->disabledRoutes = $disabledRoutes;
         $this->fileFields = $fileFields;
+        $this->protectedColumns = $protectedColumns;
     }
 
     /**
@@ -130,6 +131,25 @@ class DataBase
     public function addColumn(string $columnName, ColumnType $columnType)
     {
         $this->columns[$columnName] = $columnType;
+    }
+
+    /**
+     * Execute a statement that does not return a result set (CREATE/INSERT/UPDATE/DELETE).
+     */
+    public function execute(string $query, array $params = []): bool
+    {
+        $this->connect();
+        if (!$this->pdo) {
+            echo "Database connection failed";
+            return false;
+        }
+
+        try {
+            $stmt = $this->pdo->prepare($query);
+            return $stmt->execute($params);
+        } catch (\PDOException $e) {
+            return false;
+        }
     }
 
     public function getAddColumnSQL(string $column, ColumnType $type): string

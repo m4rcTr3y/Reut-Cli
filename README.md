@@ -8,8 +8,10 @@ Built on Slim PHP for routing, REUT uses JWT (JSON Web Tokens) for secure authen
 - **Slim PHP Routing**: Fast, flexible routing powered by Slim.
 - **Model-Based Database Management**: Define tables as PHP classes in the `models` directory—no manual SQL required.
 - **Automatic CRUD API**: Default CRUD endpoints for each model.
+- **Built-in Authentication**: Ready-to-use login, register, refresh, and logout endpoints with JWT tokens (can be disabled via `REUT_AUTH_ENABLED=false`).
 - **File Upload Handling**: Manages file uploads defined in model fields.
 - **Customizable Routes**: Add custom routes in the `routers` directory, with optional authentication middleware.
+- **Runtime API Docs**: Built-in `/docs` endpoint (HTML or JSON) lists every registered route and can be disabled via `REUT_DOCS_ENABLED=false`.
 - **Configurable Setup**: Set database connection details in `.env` or `config.php`.
 
 ## Installation
@@ -68,7 +70,7 @@ If you see a stability error, install the development version:
 composer global require m4rc/reut_cli:dev-main
 ```
 
-> **Note:** Stable version (`v1.0.3`) coming soon. See [Packagist](https://packagist.org/packages/m4rc/reut_cli).
+> **Note:** Current version (`v1.0.4`). See [Packagist](https://packagist.org/packages/m4rc/reut_cli).
 
 ### 3. Initialize a New REUT Project
 
@@ -117,17 +119,18 @@ Reut manage.php generate:model Users
 
 - **Project directory commands** (run inside your project folder):  
     ```bash
-    Reut create                # Initial setup or sync models to database tables
+    Reut create                # Alias of migrate; ensures tables exist from models
+    Reut migrate               # Apply migrations from model definitions to the database
+    Reut sync                  # Reconcile existing tables with models (may drop extra columns)
     Reut status                # Check for pending migrations in models
     Reut generate:routes       # Generate routes for each model into the route/ folder
     Reut generate:model Users  # Generate a model class (replace 'Users' with your model name)
-    Reut migrate               # Apply migrations from model changes to the database
     Reut dev --port=9000       # Start the built-in PHP dev server (host defaults to 0.0.0.0)
     Reut view --port=8088      # Start the HTML schema viewer (optional host/port flags)
+    Reut inspect --table=users # Inspect DB schema and sync model definitions (use --all/--apply)
     Reut -v                    # Show CLI version
     Reut -h                    # Show help message
     ```
-
 
 - **Global CLI commands** (if installed globally):  
     ```bash
@@ -135,6 +138,69 @@ Reut manage.php generate:model Users
     Reut -v
     Reut help
     ```
+
+### API Docs Endpoint
+
+- Visit `/docs` in your running project to see a generated list of all registered routes (CRUD + custom). Append `?format=json` for JSON output.
+- Set `REUT_DOCS_ENABLED=false` in `.env` to skip registering the docs endpoint (recommended for production).
+
+### Custom Routes & Documentation
+
+- Import `Reut\Router\ReuteRoute` inside your router classes; it wraps Slim’s router and auto-records metadata for `/docs`.
+    ```php
+    use Reut\Router\ReuteRoute;
+
+    $routes = ReuteRoute::use($this->app);
+
+    // Grouped endpoints
+    $routes->group('/invoices', 'Invoices', function (ReuteRoute $group) {
+        $group->get('/all', $listHandler, 'List invoices');
+        $group->post('/pay/{id}', $payHandler, 'Pay invoice', true);
+    });
+
+    // Standalone route
+    $routes->get('/health', $healthHandler, 'Service healthcheck');
+    ```
+- Generated routers already use `ReuteRoute`, so CRUD endpoints appear automatically. Custom routes simply adopt the helper to stay documented.
+
+### Built-in Authentication
+
+- REUT provides ready-to-use authentication endpoints when enabled (default during `Reut init`):
+  - `POST /auth/login` - Login with email/username and password, returns JWT token and refresh token
+  - `POST /auth/register` - Register new user account
+  - `POST /auth/refresh` - Refresh JWT token using refresh token
+  - `POST /auth/logout` - Revoke tokens
+
+- Configuration via `auth.php` (generated during init):
+  ```php
+  // Customize table name, field mappings, token expiry
+  $authConfig = [
+      'table' => 'Users',  // or your custom table
+      'fields' => [
+          'identifier' => 'email',  // 'email' or 'username'
+          'password' => 'password',
+      ],
+      'token_expiry' => 3600,  // seconds
+  ];
+  ```
+
+- Auto-creates default `Users` table if no custom auth model exists (when `auto_create_table` is enabled).
+
+- Disable authentication endpoints by setting `REUT_AUTH_ENABLED=false` in `.env`.
+
+- Extend `Reut\Auth\AuthController` to customize validation, password hashing, or response formatting:
+  ```php
+  class CustomAuthController extends AuthController {
+      protected function validateLogin(array $credentials): ?array {
+          // Add custom checks (e.g., check if user is active)
+          $user = parent::validateLogin($credentials);
+          if ($user && $user['is_active'] === false) {
+              return null; // Reject inactive users
+          }
+          return $user;
+      }
+  }
+  ```
 
 ### Defining Relationships
 

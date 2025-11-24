@@ -24,7 +24,7 @@ switch ($command) {
         break;
     case '-v':
     case 'version':
-        echo "Reut CLI v1.0.3" . PHP_EOL;
+        echo "Reut CLI v1.0.4" . PHP_EOL;
         exit(0);
     case 'manage.php':
         $manageFile = getcwd() . DIRECTORY_SEPARATOR . 'manage.php';
@@ -43,6 +43,8 @@ case 'create':
 case 'migrate':
 case 'view':
 case 'dev':
+case 'inspect':
+case 'sync':
         $manageFile = getcwd() . DIRECTORY_SEPARATOR . 'manage.php';
         if (!file_exists($manageFile)) {
             echo "Error: manage.php not found in current directory." . PHP_EOL;
@@ -55,7 +57,7 @@ case 'dev':
     case '-h':
     case 'help':
     default:
-        echo "Reut CLI Tool v1.0.3" . PHP_EOL;
+        echo "Reut CLI Tool v1.0.4" . PHP_EOL;
         echo "Usage: php manage.php <command>" . PHP_EOL;
         echo "Commands:" . PHP_EOL;
         echo "  create            - Initial start of project or add tables from models to the database" . PHP_EOL;
@@ -65,6 +67,8 @@ case 'dev':
         echo "  migrate           - Apply migrations to the table from changes in the model definition" . PHP_EOL;
         echo "  dev               - Start the local API dev server (built-in PHP server)" . PHP_EOL;
         echo "  view              - Spin up a local HTML viewer for your models" . PHP_EOL;
+        echo "  inspect           - Inspect database tables and sync model definitions" . PHP_EOL;
+        echo "  sync              - Reconcile database schema with existing tables (advanced)" . PHP_EOL;
         echo "  -v, version       - Show CLI version" . PHP_EOL;
         echo "  -h, help          - Show this help message" . PHP_EOL;
         echo "Requirements: PHP (>=7.4) and Composer must be installed." . PHP_EOL;
@@ -86,6 +90,8 @@ function initCommand(array $argv): void
     $dbUsername = prompt('Enter database username (default: root): ') ?: 'root';
     $dbPassword = prompt('Enter database password (leave blank if none): ');
     $secretKey = prompt('Enter secret key (default: 12345678): ') ?: '12345678';
+    $enableAuth = prompt('Enable built-in authentication? (y/n, default: y): ') ?: 'y';
+    $authEnabled = (strtolower($enableAuth) === 'y' || strtolower($enableAuth) === 'yes') ? 'true' : 'false';
 
     // Create project directory
     $projectDir = getcwd() . DIRECTORY_SEPARATOR . $projectName;
@@ -144,6 +150,8 @@ DB_PASSWORD=$dbPassword
 DB_NAME=$dbName
 DB_TYPE=$dbType
 APP_ENV=development
+REUT_AUTH_ENABLED=$authEnabled
+REUT_DOCS_ENABLED=true
 ENV;
     file_put_contents('.env', $envContent);
     echo 'Created .env file' . PHP_EOL;
@@ -154,6 +162,13 @@ ENV;
         : '<?php return [];';  // Fallback if missing
     file_put_contents('config.php', $configContent);
     echo 'Created config.php' . PHP_EOL;
+
+    // Generate auth.php
+    $authContent = file_exists(__DIR__ . '/../src/authContent.php')
+        ? require __DIR__ . '/../src/authContent.php'
+        : '<?php return [];';  // Fallback if missing
+    file_put_contents('auth.php', $authContent);
+    echo 'Created auth.php' . PHP_EOL;
 
     // Generate index.php
     $indexContent = file_exists(__DIR__ . '/../src/indexContent.php')

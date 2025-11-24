@@ -46,10 +46,10 @@ require_once __DIR__.'/registerRoutes.php';
                         namespace Reut\Routers;
 
                         use Slim\App;
-                        use Slim\Routing\RouteCollectorProxy;
                         use Psr\Http\Message\ResponseInterface as Response;
                         use Psr\Http\Message\ServerRequestInterface as Request;
                         use Reut\Auth\NoAuth;
+                        use Reut\Router\ReuteRoute;
 
                         //import the {$modelName} model here
                         
@@ -65,50 +65,51 @@ require_once __DIR__.'/registerRoutes.php';
                             }
 
                             protected function genRoutes() {
-                                \$this->app->group('/{$lowercase}', function (RouteCollectorProxy \$group) {
+                                \$instance = new {$modelName}Table(\$this->config);
+                                \$router = ReuteRoute::use(\$this->app);
 
-                                    \$instance = new {$modelName}Table(\$this->config);
+                                \$router->group('/{$lowercase}', '{$modelName}', function (ReuteRoute \$grouped) use (\$instance) {
 
                                     //get all {$modelName}s from table " http://endpoint/{$lowercase}/all
-                                    \$group->get( '/all', function (Request \$request, Response \$response) use (\$instance) {
+                                    \$grouped->get('/all', function (Request \$request, Response \$response) use (\$instance) {
                                         \$params = \$request->getQueryParams();
                                         \$page = \$params['page'] ?? 1;
                                         \$limit = \$params['limit'] ?? 20;
                                         \$data = \$instance->findAll()->paginate((int)\$page, (int)\$limit);
                                         \$response->getBody()->write(json_encode(\$data));
                                         return \$response->withHeader('Content-Type', 'application/json');
-                                    });
+                                    }, 'List {$modelName} records with pagination');
 
-                                    //Get single {$modelName} from the table " http://endpoint/{$lowercase}/find/id
-                                    \$group->get('/find',function (Request \$request, Response \$response, \$args) use (\$instance) {
+                                    //Get single {$modelName} from the table " http://endpoint/{$lowercase}/find/{id}
+                                    \$grouped->get('/find/{id}',function (Request \$request, Response \$response, \$args) use (\$instance) {
                                         \$id = \$args['id'];
                                         \$data = \$instance->findOne(['id' => \$id]);
                                         \$response->getBody()->write(json_encode(\$data->results));
                                         return \$response->withHeader('Content-Type', 'application/json');
-                                    });
-                                    \$group->post('/add', function (Request \$request, Response \$response) use (\$instance) {
+                                    }, 'Find single {$modelName} by id');
+                                    \$grouped->post('/add', function (Request \$request, Response \$response) use (\$instance) {
                                         \$input = \$request->getParsedBody();
                                         \$result = \$instance->addOne(\$input);
                                         \$response->getBody()->write(json_encode(['status' => \$result]));
                                         return \$response->withHeader('Content-Type', 'application/json');
-                                    });
+                                    }, 'Create new {$modelName}');
 
                                     //Update single {$modelName} from the table " http://endpoint/{$lowercase}/update/id
-                                    \$group->put( '/update/{id}',function (Request \$request, Response \$response, \$args) use (\$instance) {
+                                    \$grouped->put( '/update/{id}',function (Request \$request, Response \$response, \$args) use (\$instance) {
                                         \$id = \$args['id'];
                                         \$input = \$request->getParsedBody();
                                         \$result = \$instance->update(\$input, ['id' => \$id]);
                                         \$response->getBody()->write(json_encode(['status' => \$result]));
                                         return \$response->withHeader('Content-Type', 'application/json');
-                                    });
+                                    }, 'Update {$modelName} by id');
 
                                     //delete single {$modelName} from the table " http://endpoint/{$lowercase}/delete/id
-                                    \$group->delete('/delete/{id}', function (Request \$request, Response \$response,\$args) use (\$instance) {
+                                    \$grouped->delete('/delete/{id}', function (Request \$request, Response \$response,\$args) use (\$instance) {
                                         \$id = \$args['id'];
                                         \$result = \$instance->delete(['id' => \$id]);
                                         \$response->getBody()->write(json_encode(['status' => \$result]));
                                         return \$response->withHeader('Content-Type', 'application/json');
-                                    });
+                                    }, 'Delete {$modelName} by id');
 
 
                                 });
@@ -117,7 +118,7 @@ require_once __DIR__.'/registerRoutes.php';
                         EOT;
 
         // Write the route file
-        $fileOpen = fopen($routerFile,'a');
+        $fileOpen = fopen($routerFile,'w');
         if($fileOpen){
             fwrite($fileOpen,$template);
             echo "Generated route file: $routerFile\n";

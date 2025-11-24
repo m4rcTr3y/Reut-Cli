@@ -48,11 +48,15 @@ try {
             batch INT NOT NULL,
             applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )";
-    $baseDb->sqlQuery($migrationsTableSql);
+    $baseDb->execute($migrationsTableSql);
 
     // Get current max batch and increment
     $batchQuery = $baseDb->sqlQuery("SELECT MAX(batch) as max_batch FROM migrations");
-    $currentBatch = ($batchQuery['max_batch'] ?? 0) + 1;
+    $maxBatch = 0;
+    if (is_array($batchQuery) && isset($batchQuery[0]['max_batch'])) {
+        $maxBatch = (int) $batchQuery[0]['max_batch'];
+    }
+    $currentBatch = $maxBatch + 1;
 
     echo "Getting tables ...\n";
 
@@ -91,15 +95,17 @@ try {
 
         // Helper function to check if a migration exists
         $hasMigration = function ($action, $column = null) use ($existingMigrations, $tableName) {
+            $escapedTable = preg_quote($tableName, '/');
             foreach ($existingMigrations as $migration) {
                 if ($column) {
                     // Match column-specific migrations (add/drop)
-                    if (preg_match("/{$action}_{$column}_(to|from)_{$tableName}_table/", $migration['name'])) {
+                    $escapedColumn = preg_quote($column, '/');
+                    if (preg_match("/{$action}_{$escapedColumn}_(to|from)_{$escapedTable}_table/", $migration['name'])) {
                         return true;
                     }
                 } else {
                     // Match table creation
-                    if (preg_match("/create_{$tableName}_table/", $migration['name'])) {
+                    if (preg_match("/create_{$escapedTable}_table/", $migration['name'])) {
                         return true;
                     }
                 }
@@ -118,7 +124,7 @@ try {
                 }
                 $migrationName = 'create_' . $tableName . '_table_' . $timestamp;
                 if ($tableInstance->createTable()) {
-                    $insertResult = $baseDb->sqlQuery(
+                    $insertResult = $baseDb->execute(
                         "INSERT IGNORE INTO migrations (name, sql_text, batch) VALUES (:name, :sql_text, :batch)",
                         ['name' => $migrationName, 'sql_text' => $sql, 'batch' => $currentBatch]
                     );
@@ -140,7 +146,11 @@ try {
             $modelColumns = array_filter($tableInstance->columns, fn($key) => strpos($key, 'FOREIGN KEY') === false, ARRAY_FILTER_USE_KEY);
             $modelColumnNames = array_keys($modelColumns);
             $missingColumns = array_diff($modelColumnNames, $dbColumns);
-            $columnsToDrop = array_diff($dbColumns, $modelColumnNames);
+            $protected = $tableInstance->protectedColumns ?? [];
+            $columnsToDrop = array_filter(
+                array_diff($dbColumns, $modelColumnNames),
+                fn($column) => !in_array($column, $protected, true)
+            );
 
             // If no missing or extra columns, skip migration
             if (empty($missingColumns) && empty($columnsToDrop)) {
@@ -156,8 +166,8 @@ try {
                     $definition = $tableInstance->columns[$column];
                     $migrationName = 'add_' . $column . '_to_' . $tableName . '_table_' . $timestamp;
                     $sql = $tableInstance->getAddColumnSQL($column, $definition);
-                    $baseDb->sqlQuery($sql);
-                    $insertResult = $baseDb->sqlQuery(
+                    $baseDb->execute($sql);
+                    $insertResult = $baseDb->execute(
                         "INSERT IGNORE INTO migrations (name, sql_text, batch) VALUES (:name, :sql_text, :batch)",
                         ['name' => $migrationName, 'sql_text' => $sql, 'batch' => $currentBatch]
                     );
@@ -177,8 +187,8 @@ try {
                 if (!$hasMigration('drop', $column)) {
                     $migrationName = 'drop_' . $column . '_from_' . $tableName . '_table_' . $timestamp;
                     $sql = $tableInstance->getDropColumnSQL($column);
-                    $baseDb->sqlQuery($sql);
-                    $insertResult = $baseDb->sqlQuery(
+                    $baseDb->execute($sql);
+                    $insertResult = $baseDb->execute(
                         "INSERT IGNORE INTO migrations (name, sql_text, batch) VALUES (:name, :sql_text, :batch)",
                         ['name' => $migrationName, 'sql_text' => $sql, 'batch' => $currentBatch]
                     );

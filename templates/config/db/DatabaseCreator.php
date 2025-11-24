@@ -26,6 +26,7 @@ class DatabaseCreator{
         
         switch ($command) {
             case 'create':
+            case 'migrate':
                 require dirname(__DIR__). '/migrate.php';
                 break;
                 
@@ -35,7 +36,7 @@ class DatabaseCreator{
             case 'generate:model':
                 require dirname(__DIR__). '/createModels.php';
                 break;
-            case 'migrate':
+            case 'sync':
                 require dirname(__DIR__) . '/update.php';
                 break;
             case 'view':
@@ -47,21 +48,26 @@ class DatabaseCreator{
             case 'status':
                 require dirname(__DIR__) . '/checkmigration.php';
                 break;
+            case 'inspect':
+                require dirname(__DIR__) . '/inspect.php';
+                break;
             case '-h':
             case 'help':
                 echo "Usage: php manage.php <command>\n";
                 echo "Commands:\n";
-                echo "  create            - Initial start of project or add tables from models to the database\n";
+                echo "  create            - Initial start of project or add tables from models to the database (alias of migrate)\n";
                 echo "  status            - Check for pending migrations in the models\n";
                 echo "  generate:routes   - Generate routes for each model into the route/ folder\n";
                 echo "  generate:model    - Generate model class, pass the model name into the console\n";
-                echo "  migrate           - Apply migrations to the table from changes in the model definition\n";
+                echo "  migrate           - Apply migrations from model definitions (ensures tables exist)\n";
+                echo "  sync              - Reconcile existing tables with models (may drop extra columns)\n";
+                echo "  inspect           - Inspect database schema and sync model definitions\n";
                 echo "  -v, version       - Show CLI version\n";
                 echo "  -h, help          - Show this help message\n";
                 break;
             case '-v':
             case 'version':
-                echo "Reut CLI version 1.0.2\n";
+                echo "Reut CLI version 1.0.4\n";
                 break;
             default:
                 echo "Invalid command.\n";
