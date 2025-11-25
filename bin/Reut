@@ -333,19 +333,20 @@ function updateCommand(): void
     $currentVersion = "1.2.0";
     echo "Current version: v{$currentVersion}" . PHP_EOL;
     
-    // Clear composer cache for reut packages
+    // Clear composer cache for reut packages (cross-platform)
     echo "Clearing composer cache..." . PHP_EOL;
-    $cacheDir = getenv('HOME') . '/.cache/composer/vcs';
-    if (is_dir($cacheDir)) {
-        $cacheFiles = glob($cacheDir . '/*reut*');
-        $cacheFiles = array_merge($cacheFiles, glob($cacheDir . '/*Reut*'));
+    $cacheDir = getComposerCacheDir();
+    if ($cacheDir && is_dir($cacheDir)) {
+        $cacheFiles = glob($cacheDir . DIRECTORY_SEPARATOR . '*reut*');
+        $cacheFiles = array_merge($cacheFiles, glob($cacheDir . DIRECTORY_SEPARATOR . '*Reut*'));
         foreach ($cacheFiles as $file) {
             if (is_dir($file)) {
                 // Remove directory recursively
-                $cmd = PHP_OS_FAMILY === 'Windows' 
-                    ? 'rmdir /s /q ' . escapeshellarg($file)
-                    : 'rm -rf ' . escapeshellarg($file);
-                exec($cmd);
+                if (PHP_OS_FAMILY === 'Windows') {
+                    exec('rmdir /s /q ' . escapeshellarg($file));
+                } else {
+                    exec('rm -rf ' . escapeshellarg($file));
+                }
                 echo "  Cleared: " . basename($file) . PHP_EOL;
             }
         }
@@ -357,14 +358,65 @@ function updateCommand(): void
     passthru($cmd, $exitCode);
     
     if ($exitCode === 0) {
-        echo PHP_EOL . "✓ REUT CLI updated successfully!" . PHP_EOL;
+        echo PHP_EOL . "[OK] REUT CLI updated successfully!" . PHP_EOL;
         
         // Show new version
         echo PHP_EOL . "Verifying installation..." . PHP_EOL;
         passthru('Reut -v');
     } else {
-        echo PHP_EOL . "✗ Update failed with exit code: {$exitCode}" . PHP_EOL;
+        echo PHP_EOL . "[ERROR] Update failed with exit code: {$exitCode}" . PHP_EOL;
         echo "Try running manually: composer global update m4rc/reut_cli" . PHP_EOL;
         exit(1);
     }
+}
+
+/**
+ * Get the composer cache VCS directory in a cross-platform way.
+ */
+function getComposerCacheDir(): ?string
+{
+    // Try to get from composer config first
+    $output = [];
+    exec('composer global config cache-vcs-dir 2>/dev/null', $output);
+    if (!empty($output[0]) && is_dir($output[0])) {
+        return $output[0];
+    }
+    
+    // Fall back to platform-specific defaults
+    if (PHP_OS_FAMILY === 'Windows') {
+        // Windows: %LOCALAPPDATA%\Composer\cache\vcs
+        $localAppData = getenv('LOCALAPPDATA');
+        if ($localAppData) {
+            return $localAppData . '\\Composer\\cache\\vcs';
+        }
+        // Fallback to APPDATA
+        $appData = getenv('APPDATA');
+        if ($appData) {
+            return $appData . '\\Composer\\cache\\vcs';
+        }
+    } elseif (PHP_OS_FAMILY === 'Darwin') {
+        // macOS: ~/Library/Caches/composer/vcs
+        $home = getenv('HOME');
+        if ($home) {
+            return $home . '/Library/Caches/composer/vcs';
+        }
+    } else {
+        // Linux: ~/.cache/composer/vcs (XDG) or ~/.composer/cache/vcs
+        $xdgCache = getenv('XDG_CACHE_HOME');
+        if ($xdgCache) {
+            return $xdgCache . '/composer/vcs';
+        }
+        $home = getenv('HOME');
+        if ($home) {
+            // Try XDG default first
+            $xdgPath = $home . '/.cache/composer/vcs';
+            if (is_dir($xdgPath)) {
+                return $xdgPath;
+            }
+            // Fall back to old location
+            return $home . '/.composer/cache/vcs';
+        }
+    }
+    
+    return null;
 }
