@@ -2,7 +2,7 @@
 
 require __DIR__ . "/../vendor/autoload.php";
 require __DIR__ . "/../config.php";
-require __DIR__ . "/utils/ascii_table.php";
+require __DIR__ . "/Utils/ascii_table.php";
 
 use Reut\DB\DataBase;
 
