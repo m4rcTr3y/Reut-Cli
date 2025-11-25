@@ -1,8 +1,25 @@
 #!/usr/bin/env php
 <?php
 
-// Autoload dependencies
-require __DIR__ . '/../vendor/autoload.php';  // Use Composer autoloader
+// Autoload dependencies - check multiple locations for global vs local install
+$autoloadPaths = [
+    __DIR__ . '/../../../autoload.php',      // Global install: vendor/m4rc/reut_cli/bin -> vendor/autoload.php
+    __DIR__ . '/../vendor/autoload.php',     // Local development
+];
+
+$autoloadFound = false;
+foreach ($autoloadPaths as $autoloadPath) {
+    if (file_exists($autoloadPath)) {
+        require $autoloadPath;
+        $autoloadFound = true;
+        break;
+    }
+}
+
+if (!$autoloadFound) {
+    fwrite(STDERR, "Composer autoload not found. Run 'composer install' first.\n");
+    exit(1);
+}
 
 // Ensure CLI execution
 if (php_sapi_name() !== 'cli') {
