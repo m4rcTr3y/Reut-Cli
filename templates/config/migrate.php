@@ -61,7 +61,7 @@ try {
     echo "Getting tables ...\n";
 
     // Get model files
-    $modelFiles = array_diff(scandir(__DIR__ . '/../models/'), ['.', '..']);
+    $modelFiles = array_filter(array_diff(scandir(__DIR__ . '/../models/'), ['.', '..']), fn($f) => str_ends_with($f, '.php'));
 
     $noRelations = [];
     $withRelations = [];
