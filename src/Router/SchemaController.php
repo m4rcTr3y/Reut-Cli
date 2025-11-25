@@ -24,7 +24,12 @@ class SchemaController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
         }
         
-        $config = require $configPath;
+        // config.php sets $config variable, doesn't return it
+        require $configPath;
+        if (!isset($config) || !is_array($config)) {
+            $response->getBody()->write(json_encode(['error' => 'config.php must define $config array']));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
         
         $modelsDir = $projectRoot . '/models';
         $modelsNamespace = 'Reut\\Models\\';
