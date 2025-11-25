@@ -45,3 +45,27 @@
 - JWT token generation and refresh token management integrated with existing `JwtAuth` middleware.
 - Updated `bin/Reut` init command to prompt for authentication enablement and generate `auth.php` config file.
 
+## PSR-4 Autoloading Fixes (v1.1.2 - v1.1.5)
+- **Directory casing fixes for Linux compatibility**: Renamed all lowercase directories to match PSR-4 namespace conventions (case-sensitive on Linux):
+  - `db/` → `DB/` (namespace `Reut\DB`)
+  - `db/types/` → `DB/Types/` (namespace `Reut\DB\Types`)
+  - `db/exceptions/` → `DB/Exceptions/` (namespace `Reut\DB\Exceptions`)
+  - `auth/` → `Auth/` (namespace `Reut\Auth`)
+  - `middleware/` → `Middleware/` (namespace `Reut\Middleware`)
+  - `router/` → `Router/` (namespace `Reut\Router`)
+  - `utils/` → `Utils/` (namespace `Reut\Utils`)
+- **Fixed DatabaseCreator namespace**: Changed from `Reut\DB\Creator` to `Reut\DB` to match the actual file location.
+- **Non-PHP file filtering**: Added filter to exclude `.gitkeep` and other non-PHP files from model directory scans in `checkmigration.php`, `migrate.php`, and `update.php`.
+- **Project autoload mappings**: Added `Reut\Routers\` and `Reut\Models\` PSR-4 mappings to skeleton `composer.json` for proper autoloading of user-defined routers and models.
+
+## Schema Viewer Endpoint (v1.1.6)
+- **New `/schema` endpoint**: Added `Reut\Router\SchemaController` to render database schema viewer inline during development (like `/docs`).
+- Displays all model tables with columns, types, primary keys, foreign keys, relationships, and modification timestamps.
+- Supports JSON output via `?format=json` query parameter.
+- Dark/light mode toggle with persistent preference.
+- **Environment control**: Enable/disable via `REUT_SCHEMA_ENABLED` env variable (defaults to `true` for development, set to `false` in production).
+- The `Reut view` command still works for standalone viewer with live refresh, but `/schema` is now available during normal dev server operation.
+
+## CLI Version Update
+- Updated CLI version to 1.1.6 in `DatabaseCreator.php`.
+
