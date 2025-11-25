@@ -6,7 +6,7 @@ use Reut\Support\ProjectPath;
 
 require ProjectPath::resolve('vendor', 'autoload.php');
 require ProjectPath::resolve('config.php');
-require __DIR__ . "/utils/ascii_table.php";
+require __DIR__ . "/Utils/ascii_table.php";
 
 // Autoload models dynamically
 spl_autoload_register(function ($class) {
