@@ -205,8 +205,17 @@ if (!defined('REUT_PROJECT_ROOT')) {
     define('REUT_PROJECT_ROOT', __DIR__);
 }
 chdir(REUT_PROJECT_ROOT);
-require REUT_PROJECT_ROOT . '/vendor/autoload.php';
+\$autoload = REUT_PROJECT_ROOT . '/vendor/autoload.php';
+if (!file_exists(\$autoload)) {
+    fwrite(STDERR, "vendor/autoload.php not found. Run `composer install` before using the REUT CLI.\\n");
+    exit(1);
+}
+require \$autoload;
 use Reut\DB\Creator\DatabaseCreator;
+if (!class_exists(DatabaseCreator::class)) {
+    fwrite(STDERR, "Composer dependencies missing. Run `composer install` to install reut/core.\\n");
+    exit(1);
+}
 DatabaseCreator::Generate();
 PHP;
     file_put_contents('manage.php', $manageContent);
