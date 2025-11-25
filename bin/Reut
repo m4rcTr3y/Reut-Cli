@@ -41,7 +41,7 @@ switch ($command) {
         break;
     case '-v':
     case 'version':
-        echo "Reut CLI v1.2.1" . PHP_EOL;
+        echo "Reut CLI v1.2.2" . PHP_EOL;
         exit(0);
     case 'update':
         updateCommand();
@@ -77,7 +77,7 @@ case 'sync':
     case '-h':
     case 'help':
     default:
-        echo "Reut CLI Tool v1.2.1" . PHP_EOL;
+        echo "Reut CLI Tool v1.2.2" . PHP_EOL;
         echo "Usage: php manage.php <command>" . PHP_EOL;
         echo "Commands:" . PHP_EOL;
         echo "  create            - Initial start of project or add tables from models to the database" . PHP_EOL;
@@ -330,7 +330,7 @@ function updateCommand(): void
     echo "Updating REUT CLI..." . PHP_EOL;
     
     // Get current version
-    $currentVersion = "1.2.1";
+    $currentVersion = "1.2.2";
     echo "Current version: v{$currentVersion}" . PHP_EOL;
     
     // Clear composer cache for reut packages (cross-platform)
