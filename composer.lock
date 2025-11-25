@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "92270e02d0d3f3c6b4f1f286d3db9add",
+    "content-hash": "e9257a86417381352b632eacbc6a8644",
     "packages": [
         {
             "name": "composer/pcre",
@@ -1154,11 +1154,17 @@
         },
         {
             "name": "reut/core",
-            "version": "dev-dev",
+            "version": "v1.1.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/m4rcTr3y/reut_core.git",
+                "reference": "c131ec5f8d55ffd04af796005564ca5fdb23e35b"
+            },
             "dist": {
-                "type": "path",
-                "url": "packages/core",
-                "reference": "078840a0ad69b63b85ff562e1eb0720e01b21dd0"
+                "type": "zip",
+                "url": "https://api.github.com/repos/m4rcTr3y/reut_core/zipball/c131ec5f8d55ffd04af796005564ca5fdb23e35b",
+                "reference": "c131ec5f8d55ffd04af796005564ca5fdb23e35b",
+                "shasum": ""
             },
             "require": {
                 "firebase/php-jwt": "^6.10",
@@ -1174,14 +1180,16 @@
                     "Reut\\": "src/"
                 }
             },
+            "notification-url": "https://packagist.org/downloads/",
             "license": [
                 "MIT"
             ],
             "description": "Internal core package for the REUT framework.",
-            "transport-options": {
-                "symlink": false,
-                "relative": true
-            }
+            "support": {
+                "issues": "https://github.com/m4rcTr3y/reut_core/issues",
+                "source": "https://github.com/m4rcTr3y/reut_core/tree/v1.1.0"
+            },
+            "time": "2025-11-25T08:48:02+00:00"
         },
         {
             "name": "slim/psr7",
@@ -1718,9 +1726,7 @@
     "packages-dev": [],
     "aliases": [],
     "minimum-stability": "stable",
-    "stability-flags": {
-        "reut/core": 20
-    },
+    "stability-flags": {},
     "prefer-stable": false,
     "prefer-lowest": false,
     "platform": {
