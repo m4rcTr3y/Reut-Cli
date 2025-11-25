@@ -6,15 +6,19 @@ This guide covers how to use the REUT framework from installation to building pr
 
 1. [Installation](#installation)
 2. [Project Setup](#project-setup)
-3. [Creating Models](#creating-models)
-4. [Database Migrations](#database-migrations)
-5. [Generating Routes](#generating-routes)
-6. [Custom Routes](#custom-routes)
-7. [Authentication](#authentication)
-8. [API Documentation](#api-documentation)
-9. [Schema Inspection](#schema-inspection)
-10. [Development Workflow](#development-workflow)
-11. [Examples](#examples)
+3. [Project Structure](#project-structure)
+4. [Creating Models](#creating-models)
+5. [Database Migrations](#database-migrations)
+6. [Generating Routes](#generating-routes)
+7. [Custom Routes](#custom-routes)
+8. [Authentication](#authentication)
+9. [API Documentation](#api-documentation)
+10. [Schema Viewer](#schema-viewer)
+11. [Schema Inspection](#schema-inspection)
+12. [Development Workflow](#development-workflow)
+13. [CLI Commands](#cli-commands)
+14. [Environment Variables](#environment-variables)
+15. [Examples](#examples)
 
 ---
 
@@ -24,7 +28,7 @@ This guide covers how to use the REUT framework from installation to building pr
 
 - PHP 7.4 or higher
 - Composer installed globally
-- MySQL or PostgreSQL database server
+- MySQL database server
 
 ### Install REUT CLI Globally
 
@@ -50,7 +54,7 @@ source ~/.bashrc
 
 ```bash
 Reut -v
-# Should output: Reut CLI v1.0.4
+# Should output: Reut CLI version 1.1.6
 ```
 
 ---
@@ -67,19 +71,11 @@ Reut init
 
 You'll be prompted for:
 - **Project name** (default: `myproject`)
-- **Database type** (`mysql` or `postgresql`)
 - **Database name** (default: `test_db`)
 - **Database username** (default: `root`)
 - **Database password** (optional)
-- **Secret key** (default: `12345678`) - used for JWT tokens
-
-This creates a project directory with:
-- `models/` - Your model classes
-- `routers/` - Route definitions
-- `config/` - Configuration files
-- `.env` - Environment variables
-- `index.php` - Application entry point
-- `manage.php` - CLI command handler
+- **Secret key** (default: auto-generated) - used for JWT tokens
+- **Enable authentication** (default: yes)
 
 ### Install Dependencies
 
@@ -92,6 +88,61 @@ composer install
 
 ---
 
+## Project Structure
+
+After running `Reut init`, your project will have this structure:
+
+```
+myproject/
+├── .env                  # Environment variables (DB credentials, secrets)
+├── auth.php              # Authentication configuration
+├── composer.json         # Dependencies and autoload mappings
+├── config.php            # Database configuration loader
+├── index.php             # Application entry point (Slim app)
+├── manage.php            # CLI command handler
+├── devserver/            # Development server files (auto-generated)
+│   └── router.php        # Dev server router (created on `Reut dev`)
+├── models/               # Model classes (database tables)
+│   └── UsersTable.php    # Example: Users model
+├── routers/              # Route definitions
+│   ├── routes.php        # Main routes file (registers all routers)
+│   └── UsersRouter.php   # Example: Users CRUD routes
+├── uploads/              # File uploads directory (auto-created)
+└── viewer/               # Schema viewer files (auto-generated)
+    ├── index.php         # Viewer UI (created on `Reut view`)
+    ├── router.php        # Viewer router
+    └── assets/
+        └── style.css     # Viewer styles
+```
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `.env` | Environment variables (DB credentials, feature flags) |
+| `config.php` | Loads `.env` and creates `$config` array for database |
+| `auth.php` | JWT authentication settings (table, fields, expiry) |
+| `index.php` | Slim application setup, middleware, routes |
+| `manage.php` | Entry point for CLI commands (`php manage.php <cmd>`) |
+| `routers/routes.php` | Main routing file, registers all routers |
+
+### Autoload Mappings
+
+The `composer.json` includes PSR-4 autoload mappings:
+
+```json
+{
+    "autoload": {
+        "psr-4": {
+            "Reut\\Routers\\": "routers/",
+            "Reut\\Models\\": "models/"
+        }
+    }
+}
+```
+
+---
+
 ## Creating Models
 
 ### Generate a Model
@@ -99,84 +150,65 @@ composer install
 Create a new model class:
 
 ```bash
-Reut generate:model Users
+Reut generate:model Products
 ```
 
-This generates `models/UsersTable.php` with a basic structure:
+This generates `models/ProductsTable.php` with a basic structure.
+
+### Available Column Types
 
 ```php
-<?php
-declare(strict_types=1);
-
-namespace Reut\Models;
-
-use Reut\DB\DataBase;
-use Reut\DB\Types\Varchar;
 use Reut\DB\Types\Integer;
-
-class UsersTable extends DataBase
-{
-    public function __construct(array $config)
-    {
-        parent::__construct(
-            $config,
-            [],
-            'Users',
-            false,
-            [],
-            ['all']
-        );
-
-        // Primary key
-        $this->addColumn('id', new Integer(
-            false,  // Not nullable
-            true,   // Is primary key
-            true,   // Auto-increment
-            null    // Default value
-        ));
-
-        // TODO: Add your columns here
-    }
-}
+use Reut\DB\Types\Varchar;
+use Reut\DB\Types\Text;
+use Reut\DB\Types\Boolean;
+use Reut\DB\Types\Decimal;
+use Reut\DB\Types\Date;
+use Reut\DB\Types\DateTimeType;
+use Reut\DB\Types\Timestamp;
+use Reut\DB\Types\Json;
+use Reut\DB\Types\Blob;
+use Reut\DB\Types\EnumType;
+use Reut\DB\Types\BigInteger;
+use Reut\DB\Types\SmallInteger;
+use Reut\DB\Types\TinyInteger;
+use Reut\DB\Types\FloatType;
+use Reut\DB\Types\DoubleType;
 ```
 
 ### Define Columns
 
-Add columns using type classes:
-
 ```php
-// String column
-$this->addColumn('name', new Varchar(255, false)); // length, nullable
+// Primary key (auto-increment)
+$this->addColumn('id', new Integer(false, true, true, null));
 
-// Integer column
-$this->addColumn('age', new Integer(true, false, false, 0)); // nullable, primary, auto-increment, default
+// String column (length, nullable)
+$this->addColumn('name', new Varchar(255, false));
 
-// Text column
-$this->addColumn('bio', new Text(true)); // nullable
+// Text column (nullable)
+$this->addColumn('description', new Text(true));
 
-// Boolean column
-$this->addColumn('is_active', new Boolean(false, true)); // nullable, default
+// Boolean with default
+$this->addColumn('is_active', new Boolean(false, true));
 
-// Date/DateTime columns
-$this->addColumn('created_at', new Timestamp(false, true)); // nullable, use CURRENT_TIMESTAMP
-$this->addColumn('updated_at', new DateTimeType(true)); // nullable
+// Decimal (precision, scale, nullable, default)
+$this->addColumn('price', new Decimal(10, 2, false, 0.00));
 
-// Decimal column
-$this->addColumn('price', new Decimal(10, 2, false, 0.00)); // precision, scale, nullable, default
+// Timestamps
+$this->addColumn('created_at', new Timestamp(false, true));
+$this->addColumn('updated_at', new Timestamp(true, false, true));
 
 // JSON column
-$this->addColumn('metadata', new Json(true)); // nullable
+$this->addColumn('metadata', new Json(true));
 ```
 
-### Define Relationships
-
-Add foreign keys:
+### Define Foreign Keys
 
 ```php
 // Simple foreign key
-$this->addForeignKey('user_id', 'Users');
+$this->addForeignKey('category_id', 'Categories');
 
-// With custom referenced column and cascade behavior
+// With custom options
 $this->addForeignKey(
     'author_id',
     'Users',
@@ -186,49 +218,11 @@ $this->addForeignKey(
 );
 ```
 
-### File Upload Fields
-
-Specify which columns handle file uploads:
-
-```php
-public function __construct(array $config)
-{
-    parent::__construct(
-        $config,
-        [],
-        'Products',
-        false,
-        [],
-        ['image', 'thumbnail'], // File upload fields
-        ['all']
-    );
-    // ...
-}
-```
-
-### Disable Routes
-
-Prevent certain CRUD routes from being generated:
-
-```php
-parent::__construct(
-    $config,
-    [],
-    'Users',
-    false,
-    [],
-    [],
-    ['delete', 'update'] // Disable DELETE and UPDATE routes
-);
-```
-
 ---
 
 ## Database Migrations
 
-### Create Tables
-
-Run migrations to create tables from your models:
+### Create/Migrate Tables
 
 ```bash
 Reut create
@@ -236,34 +230,30 @@ Reut create
 Reut migrate
 ```
 
-This will:
+Both commands:
 - Create the database if it doesn't exist
 - Create tables for all models
-- Handle relationship ordering (parent tables before children)
+- Handle relationship ordering (parent tables first)
 - Record migrations in the `migrations` table
 
 ### Check Migration Status
-
-See which models have pending changes:
 
 ```bash
 Reut status
 ```
 
-### Sync Schema (Advanced)
+Shows applied migrations and pending changes.
 
-Aggressively reconcile database with models (may drop extra columns):
+### Sync Schema (Destructive)
 
 ```bash
 Reut sync
 ```
 
-**Warning:** This command will:
+**Warning:** This will:
 - Add missing columns from models
 - Drop columns that exist in DB but not in models
-- Prompt to drop tables without corresponding models
-
-Use with caution in production!
+- Prompt to drop orphan tables
 
 ---
 
@@ -271,40 +261,25 @@ Use with caution in production!
 
 ### Auto-Generate CRUD Routes
 
-Generate route files for all models:
-
 ```bash
 Reut generate:routes
 ```
 
-This creates router files in `routers/` directory:
-- `UsersRouter.php`
-- `ProductsRouter.php`
-- etc.
-
-Each router provides these endpoints:
-- `GET /{model}/all` - List all records (paginated)
+Creates router files in `routers/` with endpoints:
+- `GET /{model}/all` - List all (paginated)
 - `GET /{model}/find/{id}` - Get single record
-- `POST /{model}/add` - Create new record
-- `PUT /{model}/update/{id}` - Update record
-- `DELETE /{model}/delete/{id}` - Delete record
-
-### Register Routes
-
-Routes are automatically registered in `routers/routes.php`. This file is generated/updated when you run `generate:routes`.
+- `POST /{model}/add` - Create new
+- `PUT /{model}/update/{id}` - Update
+- `DELETE /{model}/delete/{id}` - Delete
 
 ---
 
 ## Custom Routes
 
-### Create a Custom Router
-
-Create a new router file in `routers/`:
+### Using ReuteRoute
 
 ```php
 <?php
-declare(strict_types=1);
-
 namespace Reut\Routers;
 
 use Slim\App;
@@ -313,14 +288,12 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 use Reut\Auth\NoAuth;
 use Reut\Router\ReuteRoute;
 
-class InvoicesRouter extends NoAuth
+class CustomRouter extends NoAuth
 {
     protected $config;
-    protected $app;
 
     public function __construct(App $app, array $config)
     {
-        $this->app = $app;
         $this->config = $config;
         parent::__construct($app);
     }
@@ -330,232 +303,246 @@ class InvoicesRouter extends NoAuth
         $routes = ReuteRoute::use($this->app);
 
         // Standalone route
-        $routes->get('/health', function (Request $request, Response $response) {
-            $response->getBody()->write(json_encode(['status' => 'ok']));
+        $routes->get('/ping', function (Request $request, Response $response) {
+            $response->getBody()->write(json_encode(['pong' => true]));
             return $response->withHeader('Content-Type', 'application/json');
-        }, 'Health check endpoint');
+        }, 'Health check');
 
         // Grouped routes
-        $routes->group('/invoices', 'Invoices API', function ($group) {
-            $group->get('/pending', function (Request $request, Response $response) {
-                // Handler logic
-            }, 'List pending invoices');
+        $routes->group('/api', 'API', function ($group) {
+            $group->get('/status', function ($req, $res) {
+                // Handler
+            }, 'API status');
 
-            $group->post('/pay/{id}', function (Request $request, Response $response, array $args) {
-                // Handler logic
-            }, 'Pay an invoice', true); // true = requires authentication
+            $group->post('/action', function ($req, $res) {
+                // Handler
+            }, 'Perform action', true); // true = requires auth
         });
     }
 }
 ```
 
-### Using Authentication
+### Authentication in Routes
 
-Extend `Auth` instead of `NoAuth`:
+Extend `Auth` instead of `NoAuth` to require JWT for all routes:
 
 ```php
 use Reut\Auth\Auth;
 
 class SecureRouter extends Auth
 {
-    // All routes in this router require JWT authentication
+    // All routes require authentication
 }
 ```
-
-### Route Methods
-
-Available methods on `ReuteRoute`:
-- `get($path, $handler, $description, $authRequired = false)`
-- `post($path, $handler, $description, $authRequired = false)`
-- `put($path, $handler, $description, $authRequired = false)`
-- `patch($path, $handler, $description, $authRequired = false)`
-- `delete($path, $handler, $description, $authRequired = false)`
-- `group($prefix, $label, $callback)` - Creates a route group
-
-All routes registered via `ReuteRoute` are automatically documented in `/docs`.
 
 ---
 
 ## Authentication
 
-### JWT Configuration
+### Built-in Auth Endpoints
 
-Set your secret key in `.env`:
+When `REUT_AUTH_ENABLED=true`, these endpoints are available:
 
-```env
-SECRET_KEY=your-secret-key-here
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/auth/register` | POST | Register new user |
+| `/auth/login` | POST | Login, returns JWT token |
+| `/auth/refresh` | POST | Refresh access token |
+| `/auth/logout` | POST | Revoke refresh token |
+
+### Configuration (auth.php)
+
+```php
+return [
+    'table' => 'users',
+    'username_field' => 'email',
+    'password_field' => 'password',
+    'access_token_expiry' => 3600,      // 1 hour
+    'refresh_token_expiry' => 604800,   // 7 days
+    'auto_create_table' => true,
+];
 ```
 
-### Generate Tokens
+### Using JWT in Requests
 
-In your authentication logic:
+```
+Authorization: Bearer <your-jwt-token>
+```
+
+### Generate Tokens Manually
 
 ```php
 use Reut\Middleware\JwtAuth;
 
 $auth = new JwtAuth($config);
-$token = $auth->generateToken($userId, 3600); // userId, expiry in seconds
-```
-
-### Validate Tokens
-
-The `Auth` router class automatically validates JWT tokens from the `Authorization` header:
-
-```
-Authorization: Bearer <token>
-```
-
-### Refresh Tokens
-
-```php
+$token = $auth->generateToken($userId, 3600);
 $refreshToken = $auth->generateRefreshToken($userId);
-$isValid = $auth->validateRefreshToken($userId, $refreshToken);
-```
-
-### Revoke Tokens
-
-```php
-// Revoke specific token
-$auth->revokeRefreshToken($userId, $refreshToken);
-
-// Revoke all tokens for user
-$auth->revokeRefreshToken($userId);
 ```
 
 ---
 
 ## API Documentation
 
-### Access Documentation
-
-Once routes are registered, visit:
+### Access Docs
 
 ```
 http://localhost:9000/docs
-```
-
-Or with format parameter:
-
-```
 http://localhost:9000/docs?format=json
 ```
 
-### Disable in Production
+Shows all registered endpoints with methods, paths, descriptions, and auth requirements.
 
-Set in `.env`:
+### Disable in Production
 
 ```env
 REUT_DOCS_ENABLED=false
 ```
 
-The `/docs` endpoint will return 404 when disabled.
+---
 
-### Documentation Features
+## Schema Viewer
 
-- Lists all registered endpoints
-- Shows HTTP method, path, description
-- Indicates authentication requirements
-- Groups endpoints by router
-- Available in JSON or HTML format
+### Access Schema Viewer
+
+During development, view your database schema at:
+
+```
+http://localhost:9000/schema
+http://localhost:9000/schema?format=json
+```
+
+Features:
+- Lists all models and their columns
+- Shows column types, primary keys, foreign keys
+- Indicates relationships and constraints
+- Dark/light mode toggle
+- Search functionality
+
+### Disable in Production
+
+```env
+REUT_SCHEMA_ENABLED=false
+```
+
+### Standalone Viewer
+
+Run the schema viewer as a separate server:
+
+```bash
+Reut view --port=8080
+```
 
 ---
 
 ## Schema Inspection
 
-### Inspect a Single Table
+### Inspect Tables
 
-Preview database schema and sync to model:
-
-```bash
-Reut inspect --table=users
-```
-
-This will:
-1. Read the table structure from the database
-2. Generate model column definitions
-3. Show a preview of the code
-4. Ask for confirmation to apply changes
-
-### Inspect All Tables
+Preview database schema and sync to models:
 
 ```bash
-Reut inspect --all
-```
-
-### Auto-Apply Changes
-
-Skip confirmation prompt:
-
-```bash
-Reut inspect --table=users --apply
-```
-
-### Interactive Selection
-
-Run without arguments to select from available tables:
-
-```bash
+# Interactive selection
 Reut inspect
+
+# Specific table
+Reut inspect --table=users
+
+# All tables
+Reut inspect --all
+
+# Auto-apply changes
+Reut inspect --table=users --apply
 ```
 
 ---
 
 ## Development Workflow
 
-### Typical Workflow
+### Quick Start
 
-1. **Create a model:**
-   ```bash
-   Reut generate:model Products
-   ```
+```bash
+# 1. Create project
+Reut init
 
-2. **Define columns in the model file:**
-   ```php
-   $this->addColumn('name', new Varchar(255, false));
-   $this->addColumn('price', new Decimal(10, 2, false));
-   ```
+# 2. Install dependencies
+cd myproject && composer install
 
-3. **Run migrations:**
-   ```bash
-   Reut migrate
-   ```
+# 3. Create a model
+Reut generate:model Products
 
-4. **Generate routes:**
-   ```bash
-   Reut generate:routes
-   ```
+# 4. Edit model (add columns)
+# Edit models/ProductsTable.php
 
-5. **Start development server:**
-   ```bash
-   Reut dev --port=9000
-   ```
+# 5. Run migrations
+Reut migrate
 
-6. **View API documentation:**
-   ```
-   http://localhost:9000/docs
-   ```
+# 6. Generate routes
+Reut generate:routes
 
-### Making Changes
+# 7. Start dev server
+Reut dev --port=9000
 
-**Adding a column:**
-1. Edit model file, add `$this->addColumn(...)`
-2. Run `Reut migrate` to apply changes
+# 8. View docs
+open http://localhost:9000/docs
 
-**Modifying schema manually:**
-1. Make changes directly in database
-2. Run `Reut inspect --table=<name>` to sync back to model
-3. Review preview and apply if correct
+# 9. View schema
+open http://localhost:9000/schema
+```
 
-**Adding custom routes:**
-1. Create router file in `routers/`
-2. Use `ReuteRoute` to register routes
-3. Routes appear in `/docs` automatically
+---
+
+## CLI Commands
+
+| Command | Description |
+|---------|-------------|
+| `Reut init` | Initialize a new project |
+| `Reut create` | Create tables from models |
+| `Reut migrate` | Apply migrations (same as create) |
+| `Reut status` | Show migration status |
+| `Reut sync` | Sync schema (may drop columns) |
+| `Reut generate:model <Name>` | Generate a model class |
+| `Reut generate:routes` | Generate CRUD routes |
+| `Reut inspect` | Inspect and sync table schema |
+| `Reut dev [--port=9000]` | Start development server |
+| `Reut view [--port=8080]` | Start standalone schema viewer |
+| `Reut -v` / `Reut version` | Show CLI version |
+| `Reut -h` / `Reut help` | Show help |
+
+---
+
+## Environment Variables
+
+### Required
+
+```env
+DB_USERNAME=root
+DB_PASSWORD=your-password
+DB_NAME=my_database
+SECRET_KEY=your-jwt-secret-key
+```
+
+### Optional Feature Flags
+
+```env
+# Enable/disable built-in features (all default to true)
+REUT_AUTH_ENABLED=true      # Authentication endpoints
+REUT_DOCS_ENABLED=true      # /docs endpoint
+REUT_SCHEMA_ENABLED=true    # /schema endpoint
+```
+
+### Production Settings
+
+```env
+REUT_AUTH_ENABLED=true
+REUT_DOCS_ENABLED=false
+REUT_SCHEMA_ENABLED=false
+```
 
 ---
 
 ## Examples
 
-### Complete Model Example
+### Complete Model
 
 ```php
 <?php
@@ -564,12 +551,12 @@ declare(strict_types=1);
 namespace Reut\Models;
 
 use Reut\DB\DataBase;
-use Reut\DB\Types\Varchar;
 use Reut\DB\Types\Integer;
+use Reut\DB\Types\Varchar;
 use Reut\DB\Types\Text;
+use Reut\DB\Types\Decimal;
 use Reut\DB\Types\Boolean;
 use Reut\DB\Types\Timestamp;
-use Reut\DB\Types\Decimal;
 
 class ProductsTable extends DataBase
 {
@@ -578,39 +565,31 @@ class ProductsTable extends DataBase
         parent::__construct(
             $config,
             [],
-            'Products',
-            false,
-            [],
-            ['image'], // File upload field
-            [] // No disabled routes
+            'products',     // Table name
+            false,          // Has relationships
+            0,              // Relationship count
+            ['image'],      // File upload fields
+            []              // Disabled routes
         );
 
-        // Primary key
         $this->addColumn('id', new Integer(false, true, true, null));
-
-        // String fields
         $this->addColumn('name', new Varchar(255, false));
-        $this->addColumn('slug', new Varchar(255, false));
         $this->addColumn('description', new Text(true));
-
-        // Numeric fields
         $this->addColumn('price', new Decimal(10, 2, false, 0.00));
         $this->addColumn('stock', new Integer(false, false, false, 0));
-
-        // Boolean field
         $this->addColumn('is_active', new Boolean(false, true));
-
-        // Timestamps
+        $this->addColumn('image', new Varchar(255, true));
         $this->addColumn('created_at', new Timestamp(false, true));
         $this->addColumn('updated_at', new Timestamp(true, false, true));
 
-        // Foreign key relationship
-        $this->addForeignKey('category_id', 'Categories');
+        // Foreign key
+        $this->addColumn('category_id', new Integer(true));
+        $this->addForeignKey('category_id', 'categories', 'id', 'SET NULL', 'CASCADE');
     }
 }
 ```
 
-### Custom Router Example
+### Custom Router with Auth
 
 ```php
 <?php
@@ -621,18 +600,16 @@ namespace Reut\Routers;
 use Slim\App;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
-use Reut\Auth\Auth; // Requires authentication
+use Reut\Auth\Auth;
 use Reut\Router\ReuteRoute;
 use Reut\Models\OrdersTable;
 
 class OrdersRouter extends Auth
 {
     protected $config;
-    protected $app;
 
     public function __construct(App $app, array $config)
     {
-        $this->app = $app;
         $this->config = $config;
         parent::__construct($app, $config);
     }
@@ -640,49 +617,28 @@ class OrdersRouter extends Auth
     protected function genRoutes()
     {
         $routes = ReuteRoute::use($this->app);
+        $orders = new OrdersTable($this->config);
 
-        $routes->group('/orders', 'Orders Management', function ($group) use ($routes) {
-            $ordersModel = new OrdersTable($this->config);
+        $routes->group('/orders', 'Orders', function ($group) use ($orders) {
+            
+            $group->get('/my', function (Request $req, Response $res) use ($orders) {
+                $userId = $req->getAttribute('userId');
+                $data = $orders->search(['user_id' => $userId])->results;
+                $res->getBody()->write(json_encode($data));
+                return $res->withHeader('Content-Type', 'application/json');
+            }, 'Get my orders', true);
 
-            $group->get('/my-orders', function (Request $request, Response $response) use ($ordersModel) {
-                // Get user ID from JWT token (set by Auth middleware)
-                $userId = $request->getAttribute('userId');
-                
-                $orders = $ordersModel->findOne(['user_id' => $userId]);
-                $response->getBody()->write(json_encode($orders->results));
-                return $response->withHeader('Content-Type', 'application/json');
-            }, 'Get current user orders', true);
-
-            $group->post('/checkout', function (Request $request, Response $response) use ($ordersModel) {
-                $input = $request->getParsedBody();
-                $result = $ordersModel->addOne($input);
-                
-                $response->getBody()->write(json_encode(['status' => $result]));
-                return $response->withHeader('Content-Type', 'application/json');
-            }, 'Create new order', true);
+            $group->post('/create', function (Request $req, Response $res) use ($orders) {
+                $userId = $req->getAttribute('userId');
+                $input = $req->getParsedBody();
+                $input['user_id'] = $userId;
+                $result = $orders->addOne($input);
+                $res->getBody()->write(json_encode(['success' => $result]));
+                return $res->withHeader('Content-Type', 'application/json');
+            }, 'Create order', true);
         });
     }
 }
-```
-
-### Environment Configuration
-
-`.env` file structure:
-
-```env
-SECRET_KEY=your-secret-key-here
-DB_USERNAME=root
-DB_PASSWORD=your-password
-DB_NAME=my_database
-DB_TYPE=mysql
-APP_ENV=development
-REUT_DOCS_ENABLED=true
-```
-
-**Production settings:**
-```env
-APP_ENV=production
-REUT_DOCS_ENABLED=false
 ```
 
 ---
@@ -693,48 +649,28 @@ REUT_DOCS_ENABLED=false
 
 **"Command not found"**
 - Ensure Composer's `vendor/bin` is in your PATH
-- Reload your shell after adding to PATH
+- Reload shell after adding to PATH
 
 **"Database connection failed"**
-- Check `.env` file has correct credentials
-- Verify database server is running
-- Ensure database exists (or let REUT create it)
+- Check `.env` credentials
+- Verify MySQL is running
+- Ensure database exists
 
 **"Class not found"**
-- Run `composer install` in project directory
-- Check autoload paths in `composer.json`
+- Run `composer install`
+- Run `composer dump-autoload`
+- Check namespace matches file location
 
 **Routes not working**
-- Ensure `Reut generate:routes` was run
+- Run `Reut generate:routes`
 - Check `routers/routes.php` includes your router
 - Verify server is running (`Reut dev`)
 
-**Migrations not applying**
-- Check `migrations` table exists
-- Verify model classes are in `models/` directory
-- Run `Reut status` to see pending changes
-
 ---
 
-## Best Practices
+## Resources
 
-1. **Always run migrations in development first** before applying to production
-2. **Use protected columns** for audit fields (`created_at`, `updated_at`)
-3. **Disable docs in production** via `REUT_DOCS_ENABLED=false`
-4. **Use environment variables** for sensitive configuration
-5. **Version control your models** - they define your schema
-6. **Test custom routes** before deploying
-7. **Use transactions** for complex operations in custom routes
-8. **Validate input** in custom route handlers
-9. **Handle errors gracefully** and return appropriate HTTP status codes
-10. **Document custom endpoints** with clear descriptions in `ReuteRoute` calls
+- **GitHub:** [https://github.com/m4rcTr3y/Reut-Cli](https://github.com/m4rcTr3y/Reut-Cli)
+- **Core Package:** [https://github.com/m4rcTr3y/reut_core](https://github.com/m4rcTr3y/reut_core)
 
----
-
-## Additional Resources
-
-- GitHub: [https://github.com/m4rcTr3y/Reut-Cli](https://github.com/m4rcTr3y/Reut-Cli)
-- Packagist: [https://packagist.org/packages/m4rc/reut_cli](https://packagist.org/packages/m4rc/reut_cli)
-
-For issues or contributions, please visit the GitHub repository.
-
+For issues or contributions, visit the GitHub repository.
