@@ -102,24 +102,45 @@ function initCommand(array $argv): void
     mkdir($projectDir, 0755, true);
     echo "Created project directory: $projectDir" . PHP_EOL;
 
+    $skeletonDir = __DIR__ . '/../packages/skeleton';
+    $usingSkeleton = false;
+    if (is_dir($skeletonDir)) {
+        recursiveCopy($skeletonDir, $projectDir);
+        echo "Copied project skeleton" . PHP_EOL;
+        $usingSkeleton = true;
+    } else {
+        echo "Warning: packages/skeleton not found. Falling back to legacy scaffolding." . PHP_EOL;
+    }
+
     // Change to project directory
     chdir($projectDir);
 
-    // Create subdirectories
-    $dirs = ['config/db', 'models', 'routers'];
-    foreach ($dirs as $dir) {
-        mkdir($dir, 0755, true);
-        echo "Created directory: $dir" . PHP_EOL;
-    }
+    if (!$usingSkeleton) {
+        // Legacy directory creation
+        $dirs = ['config/db', 'models', 'routers'];
+        foreach ($dirs as $dir) {
+            mkdir($dir, 0755, true);
+            echo "Created directory: $dir" . PHP_EOL;
+        }
 
-    // Copy config/ directory from templates
-    $templateConfigDir = __DIR__ . '/../templates/config';
-    $destConfigDir = 'config';
-    if (is_dir($templateConfigDir)) {
-        recursiveCopy($templateConfigDir, $destConfigDir);
-        echo "Copied config/ directory" . PHP_EOL;
+        // Copy config/ directory from templates
+        $templateConfigDir = __DIR__ . '/../templates/config';
+        $destConfigDir = 'config';
+        if (is_dir($templateConfigDir)) {
+            recursiveCopy($templateConfigDir, $destConfigDir);
+            echo "Copied config/ directory" . PHP_EOL;
+        } else {
+            echo "Warning: templates/config/ not found. Skipping." . PHP_EOL;
+        }
     } else {
-        echo "Warning: templates/config/ not found. Skipping." . PHP_EOL;
+        // Ensure expected directories exist inside skeleton
+        $requiredDirs = ['models', 'routers'];
+        foreach ($requiredDirs as $dir) {
+            if (!is_dir($dir)) {
+                mkdir($dir, 0755, true);
+                echo "Created directory: $dir" . PHP_EOL;
+            }
+        }
     }
 
     // Copy the viewer scaffolding so the view command can serve HTML docs
@@ -180,28 +201,46 @@ ENV;
     // Generate manage.php
     $manageContent = <<<PHP
 <?php
-require __DIR__ . '/vendor/autoload.php';
+if (!defined('REUT_PROJECT_ROOT')) {
+    define('REUT_PROJECT_ROOT', __DIR__);
+}
+chdir(REUT_PROJECT_ROOT);
+require REUT_PROJECT_ROOT . '/vendor/autoload.php';
 use Reut\DB\Creator\DatabaseCreator;
-\$newDB = new DatabaseCreator();
-\$newDB->Generate();
+DatabaseCreator::Generate();
 PHP;
     file_put_contents('manage.php', $manageContent);
     echo 'Created manage.php' . PHP_EOL;
 
-    // Copy composer.json
-    // Copy composer.json
-    $templateComposer = __DIR__ . '/../templates/composer.json';
-    if (file_exists($templateComposer)) {
-        copy($templateComposer, 'composer.json');
-        echo "Copied composer.json" . PHP_EOL;
+    if ($usingSkeleton) {
+        $projectComposer = 'composer.json';
+        if (file_exists($projectComposer)) {
+            $composerData = json_decode(file_get_contents($projectComposer), true);
+            if (is_array($composerData)) {
+                $composerData['name'] = $composerData['name'] ?? 'reut/skeleton';
+                $composerData['name'] = sprintf('reut/%s', $projectName);
+                file_put_contents(
+                    $projectComposer,
+                    json_encode($composerData, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)
+                );
+                echo "Configured composer.json" . PHP_EOL;
+            }
+        }
     } else {
-        echo "Warning: templates/composer.json not found. Creating basic composer.json." . PHP_EOL;
-        $basicComposer = json_encode([
-            'name' => "myframework/$projectName",
-            'require' => ['php' => '>=7.4'],
-            'autoload' => ['psr-4' => ["MyFramework\\" => "src/"]]
-        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-        file_put_contents('composer.json', $basicComposer);
+        // Legacy composer.json copy
+        $templateComposer = __DIR__ . '/../templates/composer.json';
+        if (file_exists($templateComposer)) {
+            copy($templateComposer, 'composer.json');
+            echo "Copied composer.json" . PHP_EOL;
+        } else {
+            echo "Warning: templates/composer.json not found. Creating basic composer.json." . PHP_EOL;
+            $basicComposer = json_encode([
+                'name' => "myframework/$projectName",
+                'require' => ['php' => '>=7.4'],
+                'autoload' => ['psr-4' => ["MyFramework\\" => "src/"]]
+            ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+            file_put_contents('composer.json', $basicComposer);
+        }
     }
 
     // Copy .htaccess

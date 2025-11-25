@@ -2,6 +2,15 @@
     "name": "m4rc/reut_cli",
     "description": "Simple PHP Framework",
     "type": "library",
+    "repositories": [
+        {
+            "type": "path",
+            "url": "packages/core",
+            "options": {
+                "symlink": false
+            }
+        }
+    ],
     "autoload": {
         "psr-4": {
             "M4rc\\ReutCli\\": "src/"
@@ -16,7 +25,8 @@
     ],
     "bin":["bin/Reut"],
     "require": {
-        "php":">=7.4"
+        "php": ">=7.4",
+        "reut/core": "@dev"
     },
      "keywords": ["framework", "cli", "php"],
     "homepage": "https://github.com/m4rcTr3y/Reut-Cli",

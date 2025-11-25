@@ -4,8 +4,12 @@ return <<<PHP
 <?php
 declare(strict_types=1);
 
-require __DIR__ . '/vendor/autoload.php';
-require __DIR__ . '/config.php';
+if (!defined('REUT_PROJECT_ROOT')) {
+    define('REUT_PROJECT_ROOT', __DIR__);
+}
+
+require REUT_PROJECT_ROOT . '/vendor/autoload.php';
+require REUT_PROJECT_ROOT . '/config.php';
 
 use Slim\Factory\AppFactory;
 use Psr\Http\Message\ServerRequestInterface as Request;
