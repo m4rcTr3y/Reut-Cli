@@ -69,3 +69,10 @@
 ## CLI Version Update
 - Updated CLI version to 1.1.6 in `DatabaseCreator.php`.
 
+## Self-Update Command (v1.1.9)
+- **New `Reut update` command**: Added self-update functionality to easily update the CLI tool.
+- Automatically clears composer cache for reut-related packages (fixes tag caching issues).
+- Runs `composer global update m4rc/reut_cli` with `--no-cache` flag.
+- Shows current version before update and verifies new version after update.
+- Usage: Simply run `Reut update` from anywhere to update to the latest version.
+

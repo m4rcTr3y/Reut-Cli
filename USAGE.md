@@ -54,8 +54,21 @@ source ~/.bashrc
 
 ```bash
 Reut -v
-# Should output: Reut CLI version 1.1.6
+# Should output: Reut CLI v1.1.9
 ```
+
+### Update REUT CLI
+
+Update to the latest version with a single command:
+
+```bash
+Reut update
+```
+
+This automatically:
+- Clears the composer cache for reut packages
+- Runs `composer global update`
+- Verifies the new version
 
 ---
 
@@ -505,6 +518,7 @@ open http://localhost:9000/schema
 | `Reut inspect` | Inspect and sync table schema |
 | `Reut dev [--port=9000]` | Start development server |
 | `Reut view [--port=8080]` | Start standalone schema viewer |
+| `Reut update` | Update CLI to latest version |
 | `Reut -v` / `Reut version` | Show CLI version |
 | `Reut -h` / `Reut help` | Show help |
 
