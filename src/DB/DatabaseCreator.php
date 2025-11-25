@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Reut\DB\Creator;
+namespace Reut\DB;
 
 class DatabaseCreator{
 
