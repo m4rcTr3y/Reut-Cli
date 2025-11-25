@@ -55,43 +55,71 @@ function RegisterRoutes(string $configDir, string $routersDir)
     }
 
     // Check if auth is enabled
-    $authEnabled = "(\$_ENV['REUT_AUTH_ENABLED'] ?? 'true') === 'true'";
+    $authEnabled = "(strtolower(\$_ENV['REUT_AUTH_ENABLED'] ?? 'true')) === 'true'";
     $authUses = '';
     $authRegisters = '';
     
     if (file_exists(ProjectPath::resolve('auth.php'))) {
         $authUses = "use Reut\\Auth\\AuthRouter;\n";
         $authRegisters = "
-        // Register built-in authentication routes
-        if ({$authEnabled}) {
-            \$authConfig = require __DIR__ . '/../auth.php';
-            new AuthRouter(\$app, \$config, \$authConfig);
-        }
-        ";
+    // Register built-in authentication routes
+    if ({$authEnabled}) {
+        \$authConfig = require __DIR__ . '/../auth.php';
+        new AuthRouter(\$app, \$config, \$authConfig);
+    }
+    ";
     }
 
     // Check if docs are enabled
-    $docsEnabled = "(\$_ENV['REUT_DOCS_ENABLED'] ?? 'true') === 'true'";
+    $docsEnabled = "(strtolower(\$_ENV['REUT_DOCS_ENABLED'] ?? 'true')) === 'true'";
     $docsUses = "use Reut\\Router\\DocsController;\n";
     $docsRegisters = "
-        // Register API documentation endpoint
-        if ({$docsEnabled}) {
-            \$app->get('/docs', [DocsController::class, 'index']);
-        }
-        ";
+    // Register API documentation endpoint
+    if ({$docsEnabled}) {
+        \$app->get('/docs', [DocsController::class, 'index']);
+    }
+    ";
+
+    // Schema viewer endpoint
+    $schemaEnabled = "(strtolower(\$_ENV['REUT_SCHEMA_ENABLED'] ?? 'true')) === 'true'";
+    $schemaUses = "use Reut\\Router\\SchemaController;\n";
+    $schemaRegisters = "
+    // Schema viewer - disabled in production by default
+    if ({$schemaEnabled}) {
+        \$app->get('/schema', [SchemaController::class, 'index']);
+    }
+    ";
+
+    // ReuteRoute and health endpoint
+    $reuteRouteUses = "use Reut\\Router\\ReuteRoute;\nuse Psr\\Http\\Message\\ResponseInterface as Response;\nuse Psr\\Http\\Message\\ServerRequestInterface as Request;\n";
+    $reuteRouteRegisters = "
+    \$routes = ReuteRoute::use(\$app);
+
+    \$routes->get('/health', function (Request \$request, Response \$response) {
+        \$response->getBody()->write(json_encode([
+            'status' => 'ok',
+            'timestamp' => time(),
+        ]));
+        return \$response->withHeader('Content-Type', 'application/json');
+    }, 'Service healthcheck');
+    ";
 
     $routesTemplate = <<<EOT
-                        <?php
-                        use Slim\App as App; 
-                        {$uses}
-                        {$authUses}
-                        {$docsUses}
-                        return function (App \$app,Array \$config) {
-                        {$registers}
-                        {$authRegisters}
-                        {$docsRegisters}
-                        };
-                        EOT;
+<?php
+use Slim\App as App; 
+{$uses}
+{$authUses}
+{$docsUses}
+{$schemaUses}
+{$reuteRouteUses}
+return function (App \$app, Array \$config) {
+{$registers}
+{$authRegisters}
+{$docsRegisters}
+{$schemaRegisters}
+{$reuteRouteRegisters}
+};
+EOT;
 
     //write the php register file for all the routes generated
     $fileOpen = fopen($routesFile, 'w');
