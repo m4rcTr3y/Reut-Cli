@@ -48,7 +48,7 @@ try {
     echo "\n=== Re-checking Models ===\n";
     $modelsDirectory = rtrim(ProjectPath::resolve('models'), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
     $modelFiles = is_dir($modelsDirectory)
-        ? array_diff(scandir($modelsDirectory), ['.', '..'])
+        ? array_filter(array_diff(scandir($modelsDirectory), ['.', '..']), fn($f) => str_ends_with($f, '.php'))
         : [];
     $noRelations = [];
     $withRelations = [];

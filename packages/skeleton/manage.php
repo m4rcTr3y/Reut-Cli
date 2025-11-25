@@ -14,7 +14,7 @@ if (!file_exists($autoload)) {
 
 require $autoload;
 
-use Reut\DB\Creator\DatabaseCreator;
+use Reut\DB\DatabaseCreator;
 
 if (!class_exists(DatabaseCreator::class)) {
     fwrite(STDERR, "Composer dependencies are missing. Run `composer install` to install reut/core and other packages.\n");
