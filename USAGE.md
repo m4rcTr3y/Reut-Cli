@@ -50,7 +50,7 @@ source ~/.bashrc
 
 ```bash
 Reut -v
-# Should output: Reut CLI v1.0.4
+# Should output: Reut CLI v1.1.0 (or newer)
 ```
 
 ---
@@ -73,13 +73,20 @@ You'll be prompted for:
 - **Database password** (optional)
 - **Secret key** (default: `12345678`) - used for JWT tokens
 
-This creates a project directory with:
-- `models/` - Your model classes
-- `routers/` - Route definitions
-- `config/` - Configuration files
-- `.env` - Environment variables
-- `index.php` - Application entry point
-- `manage.php` - CLI command handler
+This copies the bundled skeleton into a new directory. The skeleton contains only the files you edit; the framework logic is delivered through the Composer package `reut/core`.
+
+Project layout after init:
+
+```
+myproject/
+├─ config/            # config.php, auth.php (user editable)
+├─ models/            # your models
+├─ routers/           # routes.php + custom routers
+├─ devserver/, viewer/ (optional scaffolds)
+├─ index.php, manage.php  # bootstrap files that define REUT_PROJECT_ROOT
+├─ composer.json      # requires "reut/core": "^1.1"
+└─ vendor/reut/core   # framework internals (do not edit)
+```
 
 ### Install Dependencies
 
@@ -89,6 +96,8 @@ Navigate to your project and install Composer dependencies:
 cd myproject
 composer install
 ```
+
+> **Note:** `reut/core` lives entirely under `vendor/`. Use `composer update reut/core` to get framework bug fixes; you only commit your application files.
 
 ---
 
@@ -554,6 +563,19 @@ Reut inspect
 ---
 
 ## Examples
+
+---
+
+## Upgrading Existing Projects
+
+Older projects created before `reut/core` was published copied the framework directly into `config/`. To migrate:
+
+1. Run `composer require reut/core:^1.1`.
+2. Remove duplicated framework folders (`config/auth`, `config/middleware`, `config/router`, etc.), keeping only the files you actively customize.
+3. Make sure `manage.php`, `index.php`, `config.php`, and `auth.php` define `REUT_PROJECT_ROOT` and load `vendor/autoload.php` (copy them from a fresh skeleton if needed).
+4. Run `composer install` and test `Reut create`, `Reut dev`, etc.
+
+After migrating, upgrades are as simple as `composer update reut/core`.
 
 ### Complete Model Example
 

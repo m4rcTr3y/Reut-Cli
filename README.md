@@ -1,11 +1,11 @@
 # REUT Backend Framework
-REUT is a lightweight PHP framework that streamlines web development with intuitive routing, database management, and authentication.
+REUT is a lightweight PHP framework that streamlines web development with intuitive routing, database management, and authentication. Core functionality now ships as a Composer package (`reut/core`), so projects stay lean and upgrades happen via `composer update`.
 
 Built on Slim PHP for routing, REUT uses JWT (JSON Web Tokens) for secure authentication and introduces a model-based approach to database interaction—define your data structure in a PHP class, and REUT automatically generates CRUD APIs and manages tables for you.
 
 ## Features
 
-- **Slim PHP Routing**: Fast, flexible routing powered by Slim.
+- **Slim PHP Routing**: Fast, flexible routing powered by Slim and distributed via the `reut/core` Composer package.
 - **Model-Based Database Management**: Define tables as PHP classes in the `models` directory—no manual SQL required.
 - **Automatic CRUD API**: Default CRUD endpoints for each model.
 - **Built-in Authentication**: Ready-to-use login, register, refresh, and logout endpoints with JWT tokens (can be disabled via `REUT_AUTH_ENABLED=false`).
@@ -89,21 +89,29 @@ You’ll be prompted for:
 - Database password (optional)
 - Secret key (default: `12345678`)
 
-This sets up your project directory with all necessary files.
-
-### 4. Set Up Your Project
-
-Navigate to your project:
+This copies the REUT skeleton into your project directory. After the scaffold is generated you must install the Composer dependencies (the `reut/core` package lives in `vendor/`):
 
 ```bash
 cd myproject
-```
-
-Install dependencies:
-
-```bash
 composer install
 ```
+
+The skeleton only contains the files you customize (`config.php`, `auth.php`, `routers/routes.php`, `models/`, etc.); the framework itself stays inside `vendor/reut/core`.
+
+### 4. Understand the Project Layout
+
+```
+myproject/
+├─ config/            # config.php, auth.php (user editable)
+├─ models/            # your models only
+├─ routers/           # custom routes + routes.php
+├─ manage.php         # loader that defines REUT_PROJECT_ROOT
+├─ index.php          # entry point (loads vendor/reut/core)
+├─ composer.json      # includes "reut/core": "^1.1"
+└─ vendor/reut/core   # framework code (do not edit)
+```
+
+Because the framework code lives in `vendor/`, upgrades are handled by running `composer update reut/core`. Use a “publish” or manual copy only when you need to override a specific file.
 
 Generate models or resources:
 
@@ -214,6 +222,18 @@ Reut manage.php generate:model Users
 - Use `Reut dev --port=9000 --host=0.0.0.0` (or `php manage.php dev`) to spin up a PHP dev server with the bundled router that falls back to `index.php`.
 
 
+
+## Upgrading Existing Projects
+
+1. Require the new package:
+   ```bash
+   composer require reut/core:^1.1
+   ```
+2. Delete the duplicated framework files under `config/auth`, `config/router`, `config/middleware`, etc., keeping only the files you actually customize.
+3. Ensure `manage.php`, `index.php`, `config.php`, and `auth.php` define `REUT_PROJECT_ROOT` and load the vendor autoloader (new skeleton files already do this).
+4. Run `composer install` (or `composer update`) to pull in the vendor package.
+
+Once migrated, your repo contains only your application code while the framework stays versioned in Composer.
 
 ## Troubleshooting
 
