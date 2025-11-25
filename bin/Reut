@@ -26,6 +26,9 @@ switch ($command) {
     case 'version':
         echo "Reut CLI v1.1.8" . PHP_EOL;
         exit(0);
+    case 'update':
+        updateCommand();
+        break;
     case 'manage.php':
         $manageFile = getcwd() . DIRECTORY_SEPARATOR . 'manage.php';
         if (!file_exists($manageFile)) {
@@ -69,6 +72,7 @@ case 'sync':
         echo "  view              - Spin up a local HTML viewer for your models" . PHP_EOL;
         echo "  inspect           - Inspect database tables and sync model definitions" . PHP_EOL;
         echo "  sync              - Reconcile database schema with existing tables (advanced)" . PHP_EOL;
+        echo "  update            - Update REUT CLI to the latest version" . PHP_EOL;
         echo "  -v, version       - Show CLI version" . PHP_EOL;
         echo "  -h, help          - Show this help message" . PHP_EOL;
         echo "Requirements: PHP (>=7.4) and Composer must be installed." . PHP_EOL;
@@ -302,4 +306,48 @@ function recursiveCopy(string $source, string $dest): void
         }
     }
     closedir($dir);
+}
+
+function updateCommand(): void
+{
+    echo "Updating REUT CLI..." . PHP_EOL;
+    
+    // Get current version
+    $currentVersion = "1.1.8";
+    echo "Current version: v{$currentVersion}" . PHP_EOL;
+    
+    // Clear composer cache for reut packages
+    echo "Clearing composer cache..." . PHP_EOL;
+    $cacheDir = getenv('HOME') . '/.cache/composer/vcs';
+    if (is_dir($cacheDir)) {
+        $cacheFiles = glob($cacheDir . '/*reut*');
+        $cacheFiles = array_merge($cacheFiles, glob($cacheDir . '/*Reut*'));
+        foreach ($cacheFiles as $file) {
+            if (is_dir($file)) {
+                // Remove directory recursively
+                $cmd = PHP_OS_FAMILY === 'Windows' 
+                    ? 'rmdir /s /q ' . escapeshellarg($file)
+                    : 'rm -rf ' . escapeshellarg($file);
+                exec($cmd);
+                echo "  Cleared: " . basename($file) . PHP_EOL;
+            }
+        }
+    }
+    
+    // Run composer global update
+    echo PHP_EOL . "Running composer global update..." . PHP_EOL;
+    $cmd = 'composer global update m4rc/reut_cli --no-cache 2>&1';
+    passthru($cmd, $exitCode);
+    
+    if ($exitCode === 0) {
+        echo PHP_EOL . "✓ REUT CLI updated successfully!" . PHP_EOL;
+        
+        // Show new version
+        echo PHP_EOL . "Verifying installation..." . PHP_EOL;
+        passthru('Reut -v');
+    } else {
+        echo PHP_EOL . "✗ Update failed with exit code: {$exitCode}" . PHP_EOL;
+        echo "Try running manually: composer global update m4rc/reut_cli" . PHP_EOL;
+        exit(1);
+    }
 }
