@@ -67,7 +67,7 @@ class DatabaseCreator{
                 break;
             case '-v':
             case 'version':
-                echo "Reut CLI version 1.2.0\n";
+                echo "Reut CLI version 1.2.1\n";
                 break;
             default:
                 echo "Invalid command.\n";
