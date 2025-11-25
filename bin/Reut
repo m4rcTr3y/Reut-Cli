@@ -212,13 +212,14 @@ PHP;
     file_put_contents('manage.php', $manageContent);
     echo 'Created manage.php' . PHP_EOL;
 
+    $packageSlug = sanitizePackageName($projectName);
+
     if ($usingSkeleton) {
         $projectComposer = 'composer.json';
         if (file_exists($projectComposer)) {
             $composerData = json_decode(file_get_contents($projectComposer), true);
             if (is_array($composerData)) {
-                $composerData['name'] = $composerData['name'] ?? 'reut/skeleton';
-                $composerData['name'] = sprintf('reut/%s', $projectName);
+                $composerData['name'] = sprintf('reut/%s', $packageSlug);
                 file_put_contents(
                     $projectComposer,
                     json_encode($composerData, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)
@@ -235,7 +236,7 @@ PHP;
         } else {
             echo "Warning: templates/composer.json not found. Creating basic composer.json." . PHP_EOL;
             $basicComposer = json_encode([
-                'name' => "myframework/$projectName",
+                'name' => "reut/$packageSlug",
                 'require' => ['php' => '>=7.4'],
                 'autoload' => ['psr-4' => ["MyFramework\\" => "src/"]]
             ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
@@ -263,6 +264,14 @@ function prompt(string $message): string
 {
     echo $message;
     return trim(fgets(STDIN));
+}
+
+function sanitizePackageName(string $name): string
+{
+    $slug = strtolower($name);
+    $slug = preg_replace('/[^a-z0-9]+/', '-', $slug);
+    $slug = trim($slug, '-');
+    return $slug !== '' ? $slug : 'app';
 }
 
 function recursiveCopy(string $source, string $dest): void
