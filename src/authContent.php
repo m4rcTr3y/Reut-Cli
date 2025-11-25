@@ -3,10 +3,14 @@
 return <<<PHP
 <?php
 
-require __DIR__ . '/vendor/autoload.php';
+if (!defined('REUT_PROJECT_ROOT')) {
+    define('REUT_PROJECT_ROOT', __DIR__);
+}
+
+require REUT_PROJECT_ROOT . '/vendor/autoload.php';
 use Dotenv\Dotenv;
 
-\$dotenv = Dotenv::createImmutable(__DIR__);
+\$dotenv = Dotenv::createImmutable(REUT_PROJECT_ROOT);
 \$dotenv->load();
 
 // Authentication configuration
