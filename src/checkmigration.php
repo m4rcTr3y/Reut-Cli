@@ -6,7 +6,7 @@ use Reut\Support\ProjectPath;
 
 require ProjectPath::resolve('vendor', 'autoload.php');
 require ProjectPath::resolve('config.php');
-require __DIR__ . "/utils/ascii_table.php";
+require __DIR__ . "/Utils/ascii_table.php";
 
 // Autoload models dynamically
 spl_autoload_register(function ($class) {
@@ -48,7 +48,7 @@ try {
     echo "\n=== Re-checking Models ===\n";
     $modelsDirectory = rtrim(ProjectPath::resolve('models'), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
     $modelFiles = is_dir($modelsDirectory)
-        ? array_diff(scandir($modelsDirectory), ['.', '..'])
+        ? array_filter(array_diff(scandir($modelsDirectory), ['.', '..']), fn($f) => str_ends_with($f, '.php'))
         : [];
     $noRelations = [];
     $withRelations = [];
