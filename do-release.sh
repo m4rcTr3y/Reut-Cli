@@ -42,10 +42,10 @@ echo ""
 echo "Step 4: Splitting subtree for packages/core..."
 git subtree split --prefix=packages/core -b core-release
 
-# Step 5: Push to reut_core repository
+# Step 5: Push to reut_core repository (main branch)
 echo ""
-echo "Step 5: Pushing to reut_core repository..."
-git push reut_core core-release:main || git push reut_core core-release:master
+echo "Step 5: Pushing to reut_core repository (main branch)..."
+git push reut_core core-release:main
 
 # Step 6: Tag the core release
 echo ""
