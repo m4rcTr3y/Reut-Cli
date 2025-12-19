@@ -2,14 +2,36 @@
 <?php
 
 // Autoload dependencies - check multiple locations for global vs local install
-$autoloadPaths = [
-    __DIR__ . '/../../../autoload.php',      // Global install: vendor/m4rc/reut_cli/bin -> vendor/autoload.php
-    __DIR__ . '/../vendor/autoload.php',     // Local development
-];
+// When installed globally, Composer creates a symlink in vendor/bin pointing to the package's bin file
+// The autoloader is typically in the same vendor directory
+
+$autoloadPaths = [];
+$home = getenv('HOME') ?: (getenv('USERPROFILE') ?: getenv('HOMEDRIVE') . getenv('HOMEPATH'));
+
+// Try to find autoloader relative to current file location
+$autoloadPaths[] = __DIR__ . '/../../../autoload.php';      // Global: vendor/m4rc/reut_cli/bin -> vendor/autoload.php
+$autoloadPaths[] = __DIR__ . '/../../../../autoload.php';   // Alternative global path
+$autoloadPaths[] = __DIR__ . '/../vendor/autoload.php';    // Local development
+
+// Try common global Composer locations
+if ($home) {
+    $autoloadPaths[] = $home . '/.composer/vendor/autoload.php';           // Linux/macOS default
+    $autoloadPaths[] = $home . '/.config/composer/vendor/autoload.php';    // Linux XDG
+}
+
+// Windows locations
+$appData = getenv('APPDATA');
+$localAppData = getenv('LOCALAPPDATA');
+if ($appData) {
+    $autoloadPaths[] = $appData . '/Composer/vendor/autoload.php';
+}
+if ($localAppData) {
+    $autoloadPaths[] = $localAppData . '/Composer/vendor/autoload.php';
+}
 
 $autoloadFound = false;
 foreach ($autoloadPaths as $autoloadPath) {
-    if (file_exists($autoloadPath)) {
+    if ($autoloadPath && file_exists($autoloadPath)) {
         require $autoloadPath;
         $autoloadFound = true;
         break;
@@ -17,7 +39,12 @@ foreach ($autoloadPaths as $autoloadPath) {
 }
 
 if (!$autoloadFound) {
-    fwrite(STDERR, "Composer autoload not found. Run 'composer install' first.\n");
+    fwrite(STDERR, "Error: Composer autoload not found.\n");
+    fwrite(STDERR, "Please ensure Composer is installed and run: composer global require m4rc/reut_cli\n");
+    fwrite(STDERR, "\nSearched in:\n");
+    foreach (array_filter($autoloadPaths) as $path) {
+        fwrite(STDERR, "  - " . $path . (file_exists($path) ? " (found)" : "") . "\n");
+    }
     exit(1);
 }
 
