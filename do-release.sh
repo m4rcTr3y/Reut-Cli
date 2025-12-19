@@ -45,7 +45,8 @@ git subtree split --prefix=packages/core -b core-release
 # Step 5: Push to reut_core repository (main branch)
 echo ""
 echo "Step 5: Pushing to reut_core repository (main branch)..."
-git push reut_core core-release:main
+echo "  Note: Using --force-with-lease for subtree split (safe force push)"
+git push --force-with-lease reut_core core-release:main
 
 # Step 6: Tag the core release
 echo ""
