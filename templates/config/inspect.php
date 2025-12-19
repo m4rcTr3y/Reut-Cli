@@ -5,13 +5,18 @@ require __DIR__ . '/../vendor/autoload.php';
 require __DIR__ . '/../config.php';
 
 use Reut\DB\DataBase;
+use Reut\DB\Exceptions\DatabaseConnectionException;
+use Reut\DB\Exceptions\DatabaseQueryException;
 
 $options = parseOptions($argv ?? []);
 
 $db = new DataBase($config);
 try {
     $db->connect();
-} catch (Throwable $e) {
+} catch (DatabaseConnectionException $e) {
+    fwrite(STDERR, "Database Connection Error: " . $e->getFormattedMessage() . PHP_EOL);
+    exit(1);
+} catch (\Throwable $e) {
     fwrite(STDERR, "Failed to connect to database: " . $e->getMessage() . PHP_EOL);
     exit(1);
 }

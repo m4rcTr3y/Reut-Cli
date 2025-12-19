@@ -76,13 +76,17 @@ try {
         $timestamp = date('YmdHis');
 
         // Query the migrations table to check for existing migrations
-        $existingMigrations = $baseDb->sqlQuery("SELECT name FROM migrations WHERE name LIKE '%$tableName%'");
+        $existingMigrations = $baseDb->sqlQuery(
+            "SELECT name FROM migrations WHERE name LIKE :pattern",
+            ['pattern' => "%{$tableName}%"]
+        );
 
         // Helper function to check if a migration for a specific action exists
         $hasMigration = function ($action) use ($existingMigrations, $tableName) {
+            $escapedTable = preg_quote($tableName, '/');
             foreach ($existingMigrations as $migration) {
                 // Match migration names without timestamp
-                if (preg_match("/{$action}_{$tableName}_table/", $migration['name'])) {
+                if (preg_match("/{$action}_{$escapedTable}_table/", $migration['name'])) {
                     return true;
                 }
             }
@@ -177,9 +181,31 @@ try {
     }
 
     echo "\n";
-} catch (PDOException $e) {
-    echo "PDOException: " . $e->getMessage() . "\n";
-} catch (Exception $e) {
-    echo "Exception: " . $e->getMessage() . "\n";
+} catch (DatabaseConnectionException $e) {
+    echo "Database Connection Error: " . $e->getFormattedMessage() . "\n";
+    echo "Please check your database configuration in config.php or .env file.\n";
+    exit(1);
+} catch (DatabaseQueryException $e) {
+    echo "Database Query Error: " . $e->getFormattedMessage() . "\n";
+    exit(1);
+} catch (\PDOException $e) {
+    // Fallback for unhandled PDO exceptions
+    $errorInfo = $e->errorInfo ?? ['', $e->getCode(), $e->getMessage()];
+    $queryException = new DatabaseQueryException(
+        "Database Error: " . $e->getMessage(),
+        (int)$e->getCode(),
+        $e,
+        null,
+        [],
+        $errorInfo
+    );
+    echo $queryException->getFormattedMessage() . "\n";
+    exit(1);
+} catch (\Exception $e) {
+    echo "Error: " . $e->getMessage() . "\n";
+    if ($e->getCode() !== 0) {
+        echo "Error Code: " . $e->getCode() . "\n";
+    }
+    exit(1);
 }
 ?>

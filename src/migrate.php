@@ -11,10 +11,17 @@ declare(strict_types=1);
 // - Added check to skip recording migrations if table and columns already match model schema.
 use Reut\DB\DataBase;
 use Reut\DB\Exceptions\ConnectionError;
+use Reut\DB\Exceptions\DatabaseConnectionException;
+use Reut\DB\Exceptions\DatabaseQueryException;
+use Reut\DB\Exceptions\DatabaseMigrationException;
 use Reut\Support\ProjectPath;
 
 require ProjectPath::resolve('vendor', 'autoload.php');
 require ProjectPath::resolve('config.php');
+
+// Parse command line options
+$options = parseMigrateOptions($argv ?? []);
+$dryRun = $options['dry-run'] ?? false;
 
 // Autoload models dynamically
 spl_autoload_register(function ($class) {
@@ -40,6 +47,10 @@ if ($baseDb->createDatabase($config['dbname'])) {
 // Connect to the database
 try {
     $baseDb->connect();
+    // Ensure database is selected
+    if (isset($config['dbname'])) {
+        $baseDb->execute("USE `{$config['dbname']}`");
+    }
 
     // Create migrations table
     $migrationsTableSql = "
@@ -90,13 +101,16 @@ try {
     usort($withRelations, fn($a, $b) => $a->getRelationshipCount() <=> $b->getRelationshipCount());
 
     // Function to apply migrations for a table
-    function applyMigration($baseDb, $tableInstance, $currentBatch): bool
+    function applyMigration($baseDb, $tableInstance, $currentBatch, $dryRun = false): bool
     {
         $tableName = $tableInstance->tableName;
         $timestamp = date('YmdHis');
 
         // Query existing migrations for this table
-        $existingMigrations = $baseDb->sqlQuery("SELECT name FROM migrations WHERE name LIKE '%$tableName%'");
+        $existingMigrations = $baseDb->sqlQuery(
+            "SELECT name FROM migrations WHERE name LIKE :pattern",
+            ['pattern' => "%{$tableName}%"]
+        );
 
         // Helper function to check if a migration exists
         $hasMigration = function ($action, $column = null) use ($existingMigrations, $tableName) {
@@ -128,19 +142,26 @@ try {
                     throw new Exception("Failed to generate SQL for {$tableName}.");
                 }
                 $migrationName = 'create_' . $tableName . '_table_' . $timestamp;
-                if ($tableInstance->createTable()) {
-                    $insertResult = $baseDb->execute(
-                        "INSERT IGNORE INTO migrations (name, sql_text, batch) VALUES (:name, :sql_text, :batch)",
-                        ['name' => $migrationName, 'sql_text' => $sql, 'batch' => $currentBatch]
-                    );
-                    if ($insertResult) {
-                        echo get_class($tableInstance) . " table created and migration recorded ({$migrationName}).\n";
-                        $migrationsApplied = true;
-                    } else {
-                        echo "Warning: Table created but failed to record migration for " . get_class($tableInstance) . "\n";
-                    }
+                if ($dryRun) {
+                    echo "[DRY-RUN] Would create table: {$tableName}\n";
+                    echo "[DRY-RUN] SQL: {$sql}\n";
+                    echo "[DRY-RUN] Migration name: {$migrationName}\n";
+                    $migrationsApplied = true;
                 } else {
-                    throw new Exception("Error creating " . get_class($tableInstance) . " table.");
+                    if ($tableInstance->createTable()) {
+                        $insertResult = $baseDb->execute(
+                            "INSERT IGNORE INTO migrations (name, sql_text, batch) VALUES (:name, :sql_text, :batch)",
+                            ['name' => $migrationName, 'sql_text' => $sql, 'batch' => $currentBatch]
+                        );
+                        if ($insertResult) {
+                            echo get_class($tableInstance) . " table created and migration recorded ({$migrationName}).\n";
+                            $migrationsApplied = true;
+                        } else {
+                            echo "Warning: Table created but failed to record migration for " . get_class($tableInstance) . "\n";
+                        }
+                    } else {
+                        throw new Exception("Error creating " . get_class($tableInstance) . " table.");
+                    }
                 }
             } else {
                 echo get_class($tableInstance) . " table creation migration already recorded.\n";
@@ -171,16 +192,23 @@ try {
                     $definition = $tableInstance->columns[$column];
                     $migrationName = 'add_' . $column . '_to_' . $tableName . '_table_' . $timestamp;
                     $sql = $tableInstance->getAddColumnSQL($column, $definition);
-                    $baseDb->execute($sql);
-                    $insertResult = $baseDb->execute(
-                        "INSERT IGNORE INTO migrations (name, sql_text, batch) VALUES (:name, :sql_text, :batch)",
-                        ['name' => $migrationName, 'sql_text' => $sql, 'batch' => $currentBatch]
-                    );
-                    if ($insertResult) {
-                        echo "Added column {$column} to {$tableName} and recorded migration ({$migrationName}).\n";
+                    if ($dryRun) {
+                        echo "[DRY-RUN] Would add column: {$column} to {$tableName}\n";
+                        echo "[DRY-RUN] SQL: {$sql}\n";
+                        echo "[DRY-RUN] Migration name: {$migrationName}\n";
                         $migrationsApplied = true;
                     } else {
-                        echo "Warning: Column {$column} added but failed to record migration for {$tableName}.\n";
+                        $baseDb->execute($sql);
+                        $insertResult = $baseDb->execute(
+                            "INSERT IGNORE INTO migrations (name, sql_text, batch) VALUES (:name, :sql_text, :batch)",
+                            ['name' => $migrationName, 'sql_text' => $sql, 'batch' => $currentBatch]
+                        );
+                        if ($insertResult) {
+                            echo "Added column {$column} to {$tableName} and recorded migration ({$migrationName}).\n";
+                            $migrationsApplied = true;
+                        } else {
+                            echo "Warning: Column {$column} added but failed to record migration for {$tableName}.\n";
+                        }
                     }
                 } else {
                     echo "Column {$column} add migration already recorded for {$tableName}.\n";
@@ -192,16 +220,23 @@ try {
                 if (!$hasMigration('drop', $column)) {
                     $migrationName = 'drop_' . $column . '_from_' . $tableName . '_table_' . $timestamp;
                     $sql = $tableInstance->getDropColumnSQL($column);
-                    $baseDb->execute($sql);
-                    $insertResult = $baseDb->execute(
-                        "INSERT IGNORE INTO migrations (name, sql_text, batch) VALUES (:name, :sql_text, :batch)",
-                        ['name' => $migrationName, 'sql_text' => $sql, 'batch' => $currentBatch]
-                    );
-                    if ($insertResult) {
-                        echo "Dropped column {$column} from {$tableName} and recorded migration ({$migrationName}).\n";
+                    if ($dryRun) {
+                        echo "[DRY-RUN] Would drop column: {$column} from {$tableName}\n";
+                        echo "[DRY-RUN] SQL: {$sql}\n";
+                        echo "[DRY-RUN] Migration name: {$migrationName}\n";
                         $migrationsApplied = true;
                     } else {
-                        echo "Warning: Column {$column} dropped but failed to record migration for {$tableName}.\n";
+                        $baseDb->execute($sql);
+                        $insertResult = $baseDb->execute(
+                            "INSERT IGNORE INTO migrations (name, sql_text, batch) VALUES (:name, :sql_text, :batch)",
+                            ['name' => $migrationName, 'sql_text' => $sql, 'batch' => $currentBatch]
+                        );
+                        if ($insertResult) {
+                            echo "Dropped column {$column} from {$tableName} and recorded migration ({$migrationName}).\n";
+                            $migrationsApplied = true;
+                        } else {
+                            echo "Warning: Column {$column} dropped but failed to record migration for {$tableName}.\n";
+                        }
                     }
                 } else {
                     echo "Column {$column} drop migration already recorded for {$tableName}.\n";
@@ -216,24 +251,80 @@ try {
 
     // Apply migrations for tables without relations
     foreach ($noRelations as $tableInstance) {
-        if (applyMigration($baseDb, $tableInstance, $currentBatch)) {
+        if (applyMigration($baseDb, $tableInstance, $currentBatch, $dryRun)) {
             $migrationsApplied = true;
         }
     }
 
     // Apply migrations for tables with relations
     foreach ($withRelations as $tableInstance) {
-        if (applyMigration($baseDb, $tableInstance, $currentBatch)) {
+        if (applyMigration($baseDb, $tableInstance, $currentBatch, $dryRun)) {
             $migrationsApplied = true;
         }
     }
 
-    if ($migrationsApplied) {
+    if ($dryRun) {
+        echo "\n[DRY-RUN] No changes were made. Remove --dry-run to execute migrations.\n";
+    } elseif ($migrationsApplied) {
         echo "\nAll migrations applied successfully!\n";
     } else {
         echo "\nNo new migrations were needed.\n";
     }
-} catch (Exception $e) {
+} catch (DatabaseConnectionException $e) {
+    echo "Database Connection Error: " . $e->getFormattedMessage() . "\n";
+    echo "Please check your database configuration in config.php or .env file.\n";
+    exit(1);
+} catch (DatabaseQueryException $e) {
+    echo "Database Query Error: " . $e->getFormattedMessage() . "\n";
+    exit(1);
+} catch (DatabaseMigrationException $e) {
+    echo "Migration Error: " . $e->getFormattedMessage() . "\n";
+    exit(1);
+} catch (ConnectionError $e) {
+    // Legacy exception handling
+    echo "Database Connection Error: " . $e->getMessage() . "\n";
+    if (method_exists($e, 'getFormattedMessage')) {
+        echo $e->getFormattedMessage() . "\n";
+    } else {
+        echo "Please check your database configuration in config.php or .env file.\n";
+    }
+    exit(1);
+} catch (\PDOException $e) {
+    // Fallback for unhandled PDO exceptions
+    $errorInfo = $e->errorInfo ?? ['', $e->getCode(), $e->getMessage()];
+    $queryException = new DatabaseQueryException(
+        "Database Error: " . $e->getMessage(),
+        (int)$e->getCode(),
+        $e,
+        null,
+        [],
+        $errorInfo
+    );
+    echo $queryException->getFormattedMessage() . "\n";
+    exit(1);
+} catch (\Exception $e) {
     echo "Error: " . $e->getMessage() . "\n";
+    if ($e->getCode() !== 0) {
+        echo "Error Code: " . $e->getCode() . "\n";
+    }
+    exit(1);
+}
+
+/**
+ * Parse command line options for migrate command
+ */
+function parseMigrateOptions(array $argv): array
+{
+    $options = [
+        'dry-run' => false,
+    ];
+
+    foreach ($argv as $arg) {
+        if ($arg === '--dry-run') {
+            $options['dry-run'] = true;
+        }
+    }
+
+    return $options;
 }
 ?>
