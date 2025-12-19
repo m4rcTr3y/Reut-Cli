@@ -2,6 +2,8 @@
 declare(strict_types=1);
 
 use Reut\DB\DataBase;
+use Reut\DB\Exceptions\DatabaseConnectionException;
+use Reut\DB\Exceptions\DatabaseQueryException;
 use Reut\Support\ProjectPath;
 
 require ProjectPath::resolve('vendor', 'autoload.php');
@@ -12,7 +14,10 @@ $options = parseOptions($argv ?? []);
 $db = new DataBase($config);
 try {
     $db->connect();
-} catch (Throwable $e) {
+} catch (DatabaseConnectionException $e) {
+    fwrite(STDERR, "Database Connection Error: " . $e->getFormattedMessage() . PHP_EOL);
+    exit(1);
+} catch (\Throwable $e) {
     fwrite(STDERR, "Failed to connect to database: " . $e->getMessage() . PHP_EOL);
     exit(1);
 }
