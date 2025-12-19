@@ -63,10 +63,16 @@ class DocsController
                 if (class_exists($className)) {
                     try {
                         $instance = new $className($config);
-                        $metadata[$modelName] = [
-                            'disabledRoutes' => $instance->disabledRoutes ?? [],
-                            'requiresAuth' => $instance->requiresAuth ?? false,
-                        ];
+                        $disabledRoutes = $instance->disabledRoutes ?? [];
+                        $requiresAuth = $instance->requiresAuth ?? false;
+                        
+                        // Only add to metadata if there's something to show
+                        if (!empty($disabledRoutes) || $requiresAuth) {
+                            $metadata[$modelName] = [
+                                'disabledRoutes' => $disabledRoutes,
+                                'requiresAuth' => $requiresAuth,
+                            ];
+                        }
                     } catch (\Throwable $e) {
                         // Skip models that can't be instantiated
                     }
@@ -119,8 +125,21 @@ class DocsController
             $html .= '<h2>' . htmlspecialchars($group) . '</h2>';
             
             // Show model metadata (disabled routes and auth status)
+            // Try exact match first, then try case-insensitive match
+            $meta = null;
             if (isset($modelMetadata[$group])) {
                 $meta = $modelMetadata[$group];
+            } else {
+                // Try case-insensitive match
+                foreach ($modelMetadata as $modelName => $modelMeta) {
+                    if (strcasecmp($group, $modelName) === 0) {
+                        $meta = $modelMeta;
+                        break;
+                    }
+                }
+            }
+            
+            if ($meta) {
                 $html .= '<div class="model-info">';
                 if ($meta['requiresAuth']) {
                     $html .= '<p><strong>🔒 Authentication Required:</strong> All routes for this model require a valid JWT token.</p>';
