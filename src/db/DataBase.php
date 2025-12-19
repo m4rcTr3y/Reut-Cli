@@ -8,6 +8,8 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use Psr\Log\LoggerInterface;
 use Reut\DB\Exceptions\ConnectionError;
+use Reut\DB\Exceptions\DatabaseConnectionException;
+use Reut\DB\Exceptions\DatabaseQueryException;
 use Reut\DB\Types\ColumnType;
 use Reut\Support\ProjectPath;
 
@@ -37,12 +39,17 @@ class DataBase
     public $results;
     public $disabledRoutes;
     public $fileFields;
+    public array $fileFieldTypes = [];
+    public bool $strictRequiredValidation = false;
 
     public array $columns = [];
     public array $protectedColumns = ['created_at', 'updated_at'];
     protected array $foreignKeys = [];
 
-    public function __construct(array $config, $columns = [], ?String $tableName = null, Bool $hasRelationships = false, $relationships = 0, array $fileFields = [], array $disabledRoutes = [], array $protectedColumns = ['created_at', 'updated_at'])
+    // Dangerous file extensions that should never be allowed
+    private const DANGEROUS_EXTENSIONS = ['php', 'phtml', 'php3', 'php4', 'php5', 'phps', 'phar', 'exe', 'sh', 'bat', 'cmd', 'com', 'pif', 'scr', 'vbs', 'js', 'jsp', 'asp', 'aspx'];
+
+    public function __construct(array $config, $columns = [], ?String $tableName = null, Bool $hasRelationships = false, $relationships = 0, array $fileFields = [], array $disabledRoutes = [], array $protectedColumns = ['created_at', 'updated_at'], ?bool $strictRequiredValidation = null, array $fileFieldTypes = [])
     {
         $this->config = $config;
         $this->tableName = $tableName;
@@ -52,6 +59,11 @@ class DataBase
         $this->disabledRoutes = $disabledRoutes;
         $this->fileFields = $fileFields;
         $this->protectedColumns = $protectedColumns;
+        $this->fileFieldTypes = $fileFieldTypes;
+        
+        // Handle strictRequiredValidation: if null, read from env with default false
+        $this->strictRequiredValidation = $strictRequiredValidation ?? 
+            filter_var($_ENV['REUT_STRICT_REQUIRED_VALIDATION'] ?? 'false', FILTER_VALIDATE_BOOLEAN);
     }
 
     /**
@@ -109,6 +121,11 @@ class DataBase
      */
     public function connect()
     {
+        // Don't reconnect if already connected
+        if ($this->pdo !== null) {
+            return true;
+        }
+        
         try {
             /*  $this->pdo = new \PDO(
                 "mysql:host={$this->config['host']};dbname={$this->config['dbname']};port=3306",
@@ -124,8 +141,12 @@ class DataBase
             $this->pdo->setAttribute(\PDO::ATTR_EMULATE_PREPARES, false);
             return true;
         } catch (\PDOException $e) {
-            // throw new Exception("Unk")
-            throw new ConnectionError("\nFailed to connect to database");
+            throw new DatabaseConnectionException(
+                "Failed to connect to database: " . $e->getMessage(),
+                (int)$e->getCode(),
+                $e,
+                $this->config
+            );
         }
     }
 
@@ -139,17 +160,55 @@ class DataBase
      */
     public function execute(string $query, array $params = []): bool
     {
-        $this->connect();
+        // Only connect if not already connected
         if (!$this->pdo) {
-            echo "Database connection failed";
-            return false;
+            try {
+                $this->connect();
+            } catch (DatabaseConnectionException $e) {
+                error_log("Database connection failed: " . $e->getFormattedMessage());
+                throw $e;
+            } catch (ConnectionError $e) {
+                // Legacy exception handling
+                error_log("Database connection failed: " . $e->getMessage());
+                throw $e;
+            }
+        }
+
+        if (!$this->pdo) {
+            throw new DatabaseConnectionException(
+                "Database connection failed: PDO instance is null",
+                0,
+                null,
+                $this->config
+            );
         }
 
         try {
             $stmt = $this->pdo->prepare($query);
-            return $stmt->execute($params);
+            $result = $stmt->execute($params);
+            if (!$result) {
+                $errorInfo = $stmt->errorInfo();
+                $errorMessage = $errorInfo[2] ?? 'Unknown error';
+                throw new DatabaseQueryException(
+                    "SQL execution failed: " . $errorMessage,
+                    (int)($errorInfo[0] ?? 0),
+                    null,
+                    $query,
+                    $params,
+                    $errorInfo
+                );
+            }
+            return $result;
         } catch (\PDOException $e) {
-            return false;
+            $errorInfo = $e->errorInfo ?? ['', $e->getCode(), $e->getMessage()];
+            throw new DatabaseQueryException(
+                "Database query failed: " . $e->getMessage(),
+                (int)$e->getCode(),
+                $e,
+                $query,
+                $params,
+                $errorInfo
+            );
         }
     }
 
@@ -311,9 +370,9 @@ class DataBase
         $outP = null;
         $uploadDir = rtrim(ProjectPath::resolve('uploads'), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
 
-        // Create the uploads directory if it doesn't exist
+        // Create the uploads directory if it doesn't exist with secure permissions
         if (!is_dir($uploadDir)) {
-            mkdir($uploadDir, 0777, true);
+            mkdir($uploadDir, 0750, true);
         }
 
         // Loop through the file fields
@@ -324,7 +383,30 @@ class DataBase
                 if ($_FILES[$fileField]['error'] === UPLOAD_ERR_OK) {
                     $originalFilename = basename($_FILES[$fileField]['name']);
                     $pathinfo = pathinfo($originalFilename);
-                    $extension = $pathinfo['extension'];
+                    $extension = strtolower($pathinfo['extension'] ?? '');
+                    $mimeType = $_FILES[$fileField]['type'];
+                    $fileSize = $_FILES[$fileField]['size'];
+                    $tmpName = $_FILES[$fileField]['tmp_name'];
+
+                    // Validate file type if fileFieldTypes is configured for this field
+                    if (isset($this->fileFieldTypes[$fileField]) && !empty($this->fileFieldTypes[$fileField])) {
+                        $this->validateFileType($fileField, $extension, $mimeType);
+                    }
+
+                    // Always reject dangerous extensions
+                    if (in_array($extension, self::DANGEROUS_EXTENSIONS, true)) {
+                        throw new \InvalidArgumentException(
+                            "File extension '{$extension}' is not allowed for security reasons. Field: {$fileField}"
+                        );
+                    }
+
+                    // Validate file size (default 5MB limit)
+                    $maxFileSize = 5 * 1024 * 1024; // 5MB
+                    if ($fileSize > $maxFileSize) {
+                        throw new \RuntimeException(
+                            "File too large. Maximum size: " . ($maxFileSize / 1024 / 1024) . "MB. Field: {$fileField}"
+                        );
+                    }
 
                     // Generate a unique ID for the file
                     $uniqueId = uniqid('', true);
@@ -333,7 +415,10 @@ class DataBase
                     $targetFilePath = $uploadDir . $filename;
 
                     // Move the uploaded file to the target directory
-                    if (move_uploaded_file($_FILES[$fileField]['tmp_name'], $targetFilePath)) {
+                    if (move_uploaded_file($tmpName, $targetFilePath)) {
+                        // Set secure file permissions (0640)
+                        chmod($targetFilePath, 0640);
+                        
                         // Save the filename in the $data array for future use (e.g., storing in the database)
                         $data[$fileField] = $filename;
                         $outP = $data;
@@ -349,6 +434,50 @@ class DataBase
 
         // Return the updated $data array or the original data if no files were uploaded
         return $outP ? $outP : $data;
+    }
+
+    /**
+     * Validate file type against allowed types for a field
+     * 
+     * @param string $fileField The field name
+     * @param string $extension File extension (lowercase)
+     * @param string $mimeType MIME type from upload
+     * @throws \InvalidArgumentException if file type is not allowed
+     */
+    private function validateFileType(string $fileField, string $extension, string $mimeType): void
+    {
+        $allowedExtensions = array_map('strtolower', $this->fileFieldTypes[$fileField]);
+        
+        // Check if extension is in allowed list
+        if (!in_array($extension, $allowedExtensions, true)) {
+            throw new \InvalidArgumentException(
+                "File extension '{$extension}' is not allowed for field '{$fileField}'. " .
+                "Allowed extensions: " . implode(', ', $allowedExtensions)
+            );
+        }
+
+        // Validate MIME type matches extension
+        $mimeMap = [
+            'jpg' => ['image/jpeg'],
+            'jpeg' => ['image/jpeg'],
+            'png' => ['image/png'],
+            'gif' => ['image/gif'],
+            'webp' => ['image/webp'],
+            'pdf' => ['application/pdf'],
+            'docx' => ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+            'txt' => ['text/plain'],
+            'csv' => ['text/csv', 'text/plain'],
+            'zip' => ['application/zip', 'application/x-zip-compressed'],
+        ];
+
+        if (isset($mimeMap[$extension])) {
+            $expectedMimes = $mimeMap[$extension];
+            if (!in_array($mimeType, $expectedMimes, true)) {
+                throw new \RuntimeException(
+                    "File extension mismatch. Extension '{$extension}' does not match MIME type '{$mimeType}'. Field: {$fileField}"
+                );
+            }
+        }
     }
 
 
@@ -384,12 +513,65 @@ class DataBase
 
 
 
+    /**
+     * Validate required fields based on column definitions
+     * 
+     * @param array $data Data to validate
+     * @param bool $isUpdate Whether this is an update operation
+     * @throws \InvalidArgumentException if required fields are missing
+     */
+    private function validateRequiredFields(array $data, bool $isUpdate = false): void
+    {
+        // Always check for empty data
+        if (empty($data)) {
+            $operation = $isUpdate ? 'update' : 'insert';
+            throw new \InvalidArgumentException("Data array cannot be empty for {$operation} operation");
+        }
+
+        // If strict validation is enabled OR this is an insert (not update), validate all required fields
+        if ($this->strictRequiredValidation || !$isUpdate) {
+            foreach ($this->columns as $columnName => $columnType) {
+                // Check if column is not nullable (required)
+                if (method_exists($columnType, 'isNullable') && !$columnType->isNullable()) {
+                    if (!isset($data[$columnName])) {
+                        throw new \InvalidArgumentException("Required field missing: {$columnName}");
+                    }
+                }
+            }
+        }
+        // If strict validation is false AND this is an update, allow partial updates (skip validation)
+    }
+
+    /**
+     * Validate SQL identifier (table/column name) to prevent SQL injection
+     * 
+     * @param string $identifier The identifier to validate
+     * @throws \InvalidArgumentException if identifier is invalid
+     */
+    private function validateIdentifier(string $identifier): void
+    {
+        // Valid SQL identifiers: start with letter/underscore, followed by letters, numbers, underscores
+        if (!preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/', $identifier)) {
+            throw new \InvalidArgumentException("Invalid SQL identifier: {$identifier}");
+        }
+    }
+
     public function findOne(array $criteria)
     {
         $this->connect();
         if (!$this->pdo) {
             echo "Database connection failed";
             return false;
+        }
+
+        // Validate criteria is not empty
+        if (empty($criteria)) {
+            throw new \InvalidArgumentException("Criteria cannot be empty");
+        }
+
+        // Validate identifiers in criteria keys
+        foreach (array_keys($criteria) as $key) {
+            $this->validateIdentifier($key);
         }
 
         try {
@@ -416,6 +598,13 @@ class DataBase
 
     public function addOne(array $data)
     {
+        // Validate required fields (always strict for inserts)
+        $this->validateRequiredFields($data, false);
+
+        // Validate identifiers in data keys
+        foreach (array_keys($data) as $key) {
+            $this->validateIdentifier($key);
+        }
 
         $n = $this->connect();
 
@@ -459,6 +648,20 @@ class DataBase
 
     public function addMany(array $data)
     {
+        // Validate data structure
+        if (empty($data) || !is_array($data[0] ?? null)) {
+            throw new \InvalidArgumentException("Data must be a non-empty array of arrays");
+        }
+
+        // Validate required fields for each row (always strict for inserts)
+        foreach ($data as $row) {
+            $this->validateRequiredFields($row, false);
+            // Validate identifiers
+            foreach (array_keys($row) as $key) {
+                $this->validateIdentifier($key);
+            }
+        }
+
         $this->connect();
         if (!$this->pdo) {
             echo "Database connection failed";
@@ -491,6 +694,22 @@ class DataBase
 
     public function update(array $dataToUpdate, array $updateCondition)
     {
+        // Validate update condition is not empty
+        if (empty($updateCondition)) {
+            throw new \InvalidArgumentException("Update condition cannot be empty");
+        }
+
+        // Validate required fields (respects strictRequiredValidation setting)
+        $this->validateRequiredFields($dataToUpdate, true);
+
+        // Validate identifiers in data and condition keys
+        foreach (array_keys($dataToUpdate) as $key) {
+            $this->validateIdentifier($key);
+        }
+        foreach (array_keys($updateCondition) as $key) {
+            $this->validateIdentifier($key);
+        }
+
         $this->connect();
         if (!$this->pdo) {
             echo "Database connection failed";
@@ -518,6 +737,28 @@ class DataBase
 
     public function updateMany(array $data, array $conditions)
     {
+        // Validate arrays have same length
+        if (count($data) !== count($conditions)) {
+            throw new \InvalidArgumentException("Data and conditions arrays must have the same length");
+        }
+
+        // Validate data structure
+        if (empty($data) || !is_array($data[0] ?? null)) {
+            throw new \InvalidArgumentException("Data must be a non-empty array of arrays");
+        }
+
+        // Validate identifiers
+        foreach ($data as $row) {
+            foreach (array_keys($row) as $key) {
+                $this->validateIdentifier($key);
+            }
+        }
+        foreach ($conditions as $condition) {
+            foreach (array_keys($condition) as $key) {
+                $this->validateIdentifier($key);
+            }
+        }
+
         $this->connect();
         if (!$this->pdo) {
             echo "Database connection failed";
@@ -544,6 +785,16 @@ class DataBase
 
     public function delete(array $condition)
     {
+        // Validate condition is not empty
+        if (empty($condition)) {
+            throw new \InvalidArgumentException("Delete condition cannot be empty");
+        }
+
+        // Validate identifiers in condition keys
+        foreach (array_keys($condition) as $key) {
+            $this->validateIdentifier($key);
+        }
+
         $this->connect();
         if (!$this->pdo) {
             echo "Database connection failed";
@@ -589,6 +840,16 @@ class DataBase
 
     public function search(array $criteria)
     {
+        // Validate criteria is not empty
+        if (empty($criteria)) {
+            throw new \InvalidArgumentException("Search criteria cannot be empty");
+        }
+
+        // Validate identifiers in criteria keys
+        foreach (array_keys($criteria) as $key) {
+            $this->validateIdentifier($key);
+        }
+
         $this->connect();
         if (!$this->pdo) {
             echo "Database connection failed";
@@ -660,6 +921,7 @@ class DataBase
 
     public function getTableSchema($tableName)
     {
+        $this->validateIdentifier($tableName);
         $stmt = $this->pdo->prepare("DESCRIBE $tableName");
         $stmt->execute();
         return $stmt->fetchAll(\PDO::FETCH_COLUMN);
@@ -667,6 +929,8 @@ class DataBase
 
     public function removeColumn($tableName, $columnName)
     {
+        $this->validateIdentifier($tableName);
+        $this->validateIdentifier($columnName);
         $stmt = $this->pdo->prepare("ALTER TABLE $tableName DROP COLUMN $columnName");
         // echo $stmt>;
         return $stmt->execute();
@@ -674,6 +938,8 @@ class DataBase
 
     public function updateColumnType($tableName, $columnName, $newColumnType)
     {
+        $this->validateIdentifier($tableName);
+        $this->validateIdentifier($columnName);
         $stmt = $this->pdo->prepare("ALTER TABLE $tableName MODIFY $columnName $newColumnType");
         return $stmt->execute();
     }
@@ -685,6 +951,8 @@ class DataBase
 
     public function dropColumn(string $tableName, string $column): bool
     {
+        $this->validateIdentifier($tableName);
+        $this->validateIdentifier($column);
         $sql = "ALTER TABLE " . $tableName . " DROP COLUMN $column";
         return $this->sqlQuery($sql) !== false;
     }
@@ -748,6 +1016,7 @@ class DataBase
 
     public function dropTable($tableName)
     {
+        $this->validateIdentifier($tableName);
         $this->connect();
         if (!$this->pdo) {
             echo "Database connection failed";
@@ -763,6 +1032,7 @@ class DataBase
 
     public function getColumns($tableName)
     {
+        $this->validateIdentifier($tableName);
         $this->connect();
         if (!$this->pdo) {
             echo "Database connection failed";

@@ -100,5 +100,14 @@ abstract class ColumnType{
         return $this->isPrimary;
     }
 
+    /**
+     * If the column or field is nullable
+     * @return bool
+     */
+    public function isNullable(): bool
+    {
+        return $this->nullable;
+    }
+
 }
 

@@ -61,13 +61,20 @@ class {$modelName}Table extends DataBase
         // - hasRelationships: Automatically inferred when calling addForeignKey()
         // - []: File fields array (for file uploads, if any)
         // - ['all']: Disabled routes array (routes to disable for this model)
+        // - ['created_at', 'updated_at']: Protected columns (cannot be updated directly)
+        // - null: strictRequiredValidation (null = use REUT_STRICT_REQUIRED_VALIDATION from .env)
+        // - []: File field types (allowed file extensions per field, e.g., ['avatar' => ['jpg', 'png', 'gif']])
         parent::__construct(
             \$config,
             [],
             '{$modelName}',
             false,
             [],
-            ['all']
+            [], // File fields array (e.g., ['avatar', 'document'])
+            ['all'], // Disabled routes
+            ['created_at', 'updated_at'], // Protected columns
+            null, // strictRequiredValidation (null = use env var, true/false to override)
+            [] // File field types (e.g., ['avatar' => ['jpg', 'png', 'gif'], 'document' => ['pdf', 'docx']])
         );
 
         // Define table columns with their properties
