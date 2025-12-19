@@ -37,20 +37,57 @@ Install globally via Composer:
 composer global require m4rc/reut_cli
 ```
 
-### 2. Add Composer’s `vendor/bin` to Your PATH
+### 2. Add Composer's `vendor/bin` to Your PATH
 
 #### Linux/macOS
 
-Edit your shell config (e.g., `~/.bashrc`):
+Composer may use either the traditional location (`~/.composer`) or the XDG location (`~/.config/composer`). Check which one you're using:
+
+```bash
+composer global config home
+```
+
+**For traditional location (`~/.composer`):**
+
+Edit your shell config:
+- **Bash/Zsh**: `~/.bashrc` or `~/.zshrc`
+- **Fish**: `~/.config/fish/config.fish`
 
 ```bash
 export PATH="$HOME/.composer/vendor/bin:$PATH"
 ```
 
+**For XDG location (`~/.config/composer`):**
+
+Edit your shell config:
+- **Bash/Zsh**: `~/.bashrc` or `~/.zshrc`
+- **Fish**: `~/.config/fish/config.fish`
+
+```bash
+export PATH="$HOME/.config/composer/vendor/bin:$PATH"
+```
+
+**Fish shell specific:**
+
+Add to `~/.config/fish/config.fish`:
+
+```fish
+# Check which Composer location exists
+if test -d "$HOME/.config/composer/vendor/bin"
+    set -gx PATH "$HOME/.config/composer/vendor/bin" $PATH
+else if test -d "$HOME/.composer/vendor/bin"
+    set -gx PATH "$HOME/.composer/vendor/bin" $PATH
+end
+```
+
 Reload your shell:
 
 ```bash
-source ~/.bashrc
+# Bash/Zsh
+source ~/.bashrc  # or source ~/.zshrc
+
+# Fish
+source ~/.config/fish/config.fish
 ```
 
 Verify installation:

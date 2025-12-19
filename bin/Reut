@@ -410,14 +410,131 @@ function updateCommand(): void
     if ($exitCode === 0) {
         echo PHP_EOL . "[OK] REUT CLI updated successfully!" . PHP_EOL;
         
+        // Check and provide PATH setup instructions
+        checkAndSuggestPathSetup();
+        
         // Show new version
         echo PHP_EOL . "Verifying installation..." . PHP_EOL;
-        passthru('Reut -v');
+        $binaryPath = findReutBinary();
+        if ($binaryPath) {
+            passthru('"' . $binaryPath . '" -v');
+        } else {
+            echo "Note: 'Reut' command not found in PATH. See PATH setup instructions above." . PHP_EOL;
+        }
     } else {
         echo PHP_EOL . "[ERROR] Update failed with exit code: {$exitCode}" . PHP_EOL;
         echo "Try running manually: composer global update m4rc/reut_cli" . PHP_EOL;
         exit(1);
     }
+}
+
+/**
+ * Check if Reut binary is in PATH and suggest setup if not
+ */
+function checkAndSuggestPathSetup(): void
+{
+    $home = getenv('HOME') ?: (getenv('USERPROFILE') ?: getenv('HOMEDRIVE') . getenv('HOMEPATH'));
+    if (!$home) {
+        return;
+    }
+    
+    // Check which Composer location exists
+    $composerHome = null;
+    $composerBinPath = null;
+    
+    $xdgPath = $home . '/.config/composer/vendor/bin';
+    $traditionalPath = $home . '/.composer/vendor/bin';
+    
+    if (is_dir($xdgPath)) {
+        $composerHome = $home . '/.config/composer';
+        $composerBinPath = $xdgPath;
+    } elseif (is_dir($traditionalPath)) {
+        $composerHome = $home . '/.composer';
+        $composerBinPath = $traditionalPath;
+    }
+    
+    if (!$composerBinPath) {
+        return;
+    }
+    
+    // Check if binary exists
+    $reutBinary = $composerBinPath . '/Reut';
+    if (!file_exists($reutBinary)) {
+        return;
+    }
+    
+    // Check if it's in PATH
+    $pathEnv = getenv('PATH') ?: '';
+    $inPath = strpos($pathEnv, $composerBinPath) !== false;
+    
+    if (!$inPath) {
+        echo PHP_EOL . "⚠️  PATH Setup Required" . PHP_EOL;
+        echo "The 'Reut' command is not in your PATH. Add this to your shell configuration:" . PHP_EOL . PHP_EOL;
+        
+        $shell = getenv('SHELL') ?: '';
+        if (strpos($shell, 'fish') !== false) {
+            // Fish shell
+            echo "For Fish shell, add to ~/.config/fish/config.fish:" . PHP_EOL;
+            if ($composerBinPath === $xdgPath) {
+                echo "  set -gx PATH \"\$HOME/.config/composer/vendor/bin\" \$PATH" . PHP_EOL;
+            } else {
+                echo "  set -gx PATH \"\$HOME/.composer/vendor/bin\" \$PATH" . PHP_EOL;
+            }
+        } else {
+            // Bash/Zsh
+            $configFile = strpos($shell, 'zsh') !== false ? '~/.zshrc' : '~/.bashrc';
+            echo "For Bash/Zsh, add to {$configFile}:" . PHP_EOL;
+            if ($composerBinPath === $xdgPath) {
+                echo "  export PATH=\"\$HOME/.config/composer/vendor/bin:\$PATH\"" . PHP_EOL;
+            } else {
+                echo "  export PATH=\"\$HOME/.composer/vendor/bin:\$PATH\"" . PHP_EOL;
+            }
+        }
+        
+        echo PHP_EOL . "Then reload your shell or run:" . PHP_EOL;
+        if (strpos($shell, 'fish') !== false) {
+            echo "  source ~/.config/fish/config.fish" . PHP_EOL;
+        } else {
+            echo "  source " . (strpos($shell, 'zsh') !== false ? '~/.zshrc' : '~/.bashrc') . PHP_EOL;
+        }
+        
+        echo PHP_EOL . "Or use the full path:" . PHP_EOL;
+        echo "  " . $reutBinary . " -v" . PHP_EOL;
+    }
+}
+
+/**
+ * Find the Reut binary in common locations
+ */
+function findReutBinary(): ?string
+{
+    $home = getenv('HOME') ?: (getenv('USERPROFILE') ?: getenv('HOMEDRIVE') . getenv('HOMEPATH'));
+    if (!$home) {
+        return null;
+    }
+    
+    $paths = [
+        $home . '/.config/composer/vendor/bin/Reut',
+        $home . '/.composer/vendor/bin/Reut',
+    ];
+    
+    // Windows paths
+    $appData = getenv('APPDATA');
+    $localAppData = getenv('LOCALAPPDATA');
+    if ($appData) {
+        $paths[] = $appData . '/Composer/vendor/bin/Reut';
+    }
+    if ($localAppData) {
+        $paths[] = $localAppData . '/Composer/vendor/bin/Reut';
+    }
+    
+    foreach ($paths as $path) {
+        if (file_exists($path)) {
+            return $path;
+        }
+    }
+    
+    return null;
 }
 
 /**

@@ -1,6 +1,6 @@
 {
     "name": "m4rc/reut_cli",
-    "description": "Simple PHP Framework",
+    "description": "REUT CLI Tool - A lightweight PHP framework with model-based database management",
     "type": "library",
     "autoload": {
         "psr-4": {
@@ -14,7 +14,10 @@
             "email": "marctrevis61@proton.me"
         }
     ],
-    "bin":["bin/Reut"],
+    "bin": [
+        "bin/Reut",
+        "bin/Reut.bat"
+    ],
     "require": {
         "php": ">=7.4",
         "reut/core": "^1.1"
@@ -27,10 +30,13 @@
             "Tests\\": "tests/"
         }
     },
-    "keywords": ["framework", "cli", "php"],
+    "keywords": ["framework", "cli", "php", "database", "migrations", "orm"],
     "homepage": "https://github.com/m4rcTr3y/Reut-Cli",
     "support": {
         "email": "marctrevis61@proton.me",
         "issues": "https://github.com/m4rcTr3y/Reut-Cli/issues"
+    },
+    "config": {
+        "bin-dir": "bin"
     }
 }

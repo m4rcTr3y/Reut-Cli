@@ -1,0 +1,32 @@
+# Auto-detect text files and perform LF normalization
+* text=auto
+
+# Ensure bin files are executable
+bin/Reut text eol=lf
+bin/Reut.bat text eol=crlf
+
+# Source files
+src/** text
+packages/** text
+templates/** text
+
+# Documentation
+README.md text
+fixes.md text
+
+# Composer files
+composer.json text
+composer.lock text
+
+# Exclude from package
+tests/ export-ignore
+vendor/ export-ignore
+local-docs/ export-ignore
+.gitignore export-ignore
+.gitattributes export-ignore
+.phpunit.xml export-ignore
+phpunit.xml export-ignore
+*.sh export-ignore
+uploads/ export-ignore
+EXAMPLE_MODEL.php export-ignore
+
