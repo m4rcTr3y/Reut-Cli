@@ -24,7 +24,7 @@ switch ($command) {
         break;
     case '-v':
     case 'version':
-        echo "Reut CLI v1.1.0" . PHP_EOL;
+        echo "Reut CLI v1.2.0" . PHP_EOL;
         exit(0);
     case 'manage.php':
         $manageFile = getcwd() . DIRECTORY_SEPARATOR . 'manage.php';
@@ -36,15 +36,15 @@ switch ($command) {
         $cmd = '"' . PHP_BINARY . '" "' . $manageFile . '" ' . implode(' ', array_map('escapeshellarg', $args));
         passthru($cmd, $exitCode);
         exit($exitCode);
-case 'create':
+    case 'create':
     case 'status':
     case 'generate:routes':
     case 'generate:model':
-case 'migrate':
-case 'view':
-case 'dev':
-case 'inspect':
-case 'sync':
+    case 'migrate':
+    case 'view':
+    case 'dev':
+    case 'inspect':
+    case 'sync':
         $manageFile = getcwd() . DIRECTORY_SEPARATOR . 'manage.php';
         if (!file_exists($manageFile)) {
             echo "Error: manage.php not found in current directory." . PHP_EOL;
@@ -57,7 +57,7 @@ case 'sync':
     case '-h':
     case 'help':
     default:
-        echo "Reut CLI Tool v1.1.0" . PHP_EOL;
+        echo "Reut CLI Tool v1.2.0" . PHP_EOL;
         echo "Usage: php manage.php <command>" . PHP_EOL;
         echo "Commands:" . PHP_EOL;
         echo "  create            - Initial start of project or add tables from models to the database" . PHP_EOL;
@@ -173,6 +173,20 @@ DB_TYPE=$dbType
 APP_ENV=development
 REUT_AUTH_ENABLED=$authEnabled
 REUT_DOCS_ENABLED=true
+
+# Rate Limiting Configuration
+REUT_RATE_LIMIT_ENABLED=true
+REUT_RATE_LIMIT_MAX_REQUESTS=100
+REUT_RATE_LIMIT_WINDOW_SECONDS=60
+
+# CSRF Protection Configuration
+REUT_CSRF_ENABLED=true
+REUT_CSRF_TOKEN_NAME=csrf_token
+REUT_CSRF_TOKEN_LENGTH=32
+REUT_CSRF_TOKEN_LIFETIME=3600
+
+# Required Field Validation
+REUT_STRICT_REQUIRED_VALIDATION=false
 ENV;
     file_put_contents('.env', $envContent);
     echo 'Created .env file' . PHP_EOL;

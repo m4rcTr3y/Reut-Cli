@@ -19,6 +19,14 @@
         "php": ">=7.4",
         "reut/core": "^1.1"
     },
+    "require-dev": {
+        "phpunit/phpunit": "^9.5"
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\": "tests/"
+        }
+    },
      "keywords": ["framework", "cli", "php"],
     "homepage": "https://github.com/m4rcTr3y/Reut-Cli",
     "support": {

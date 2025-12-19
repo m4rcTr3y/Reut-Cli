@@ -1,3 +1,46 @@
 /models
 /vendor/
-/LOCAL_RELEASE.md
+/local-docs/
+
+# PHPUnit
+.phpunit.result.cache
+.phpunit.cache/
+
+# Logs
+*.log
+logs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env.local
+.env.*.local
+
+# Temporary files
+*.tmp
+*.bak
+*.cache
+
+# Exclude older unversioned tests (keep only versioned tests in new-feature-tests/v1.0/)
+# Allow new-feature-tests directory and its contents
+!tests/new-feature-tests/
+!tests/new-feature-tests/**
+tests/DataBaseTest.php
+tests/DatabaseTypesTest.php
+tests/ExceptionTest.php
+tests/MigrationTest.php
+tests/ProjectPathTest.php
+tests/RouterTest.php
+tests/SecurityTest.php
+tests/TestHelper.php
+tests/bootstrap.php
+tests/fixtures/

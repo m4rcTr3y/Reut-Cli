@@ -14,6 +14,8 @@ require REUT_PROJECT_ROOT . '/config.php';
 use Slim\Factory\AppFactory;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Slim\Exception\HttpNotFoundException;
+use Reut\Middleware\RateLimitMiddleware;
+use Reut\Middleware\CsrfMiddleware;
 
 \$dotenv = \Dotenv\Dotenv::createImmutable(__DIR__);
 \$dotenv->load();
@@ -22,7 +24,11 @@ use Slim\Exception\HttpNotFoundException;
 
 
 \$app->addRoutingMiddleware();                    
-\$app->addBodyParsingMiddleware();                
+\$app->addBodyParsingMiddleware();
+
+// Add security middlewares
+\$app->add(new RateLimitMiddleware(\$app));
+\$app->add(new CsrfMiddleware(\$app));                
 
 \$app->add(function (Request \$request, \$handler) {
     \$method = \$request->getMethod();

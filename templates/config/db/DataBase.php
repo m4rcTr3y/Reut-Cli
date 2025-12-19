@@ -8,6 +8,8 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use Psr\Log\LoggerInterface;
 use Reut\DB\Exceptions\ConnectionError;
+use Reut\DB\Exceptions\DatabaseConnectionException;
+use Reut\DB\Exceptions\DatabaseQueryException;
 use Reut\DB\Types\ColumnType;
 
 /**
@@ -40,6 +42,14 @@ class DataBase
     public array $columns = [];
     public array $protectedColumns = ['created_at', 'updated_at'];
     protected array $foreignKeys = [];
+    
+    // File upload security settings
+    private array $allowedMimeTypes = [
+        'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+        'application/pdf',
+        'text/plain', 'text/csv'
+    ];
+    private int $maxFileSize = 5242880; // 5MB
 
     public function __construct(array $config, $columns = [], ?String $tableName = null, Bool $hasRelationships = false, $relationships = 0, array $fileFields = [], array $disabledRoutes = [], array $protectedColumns = ['created_at', 'updated_at'])
     {
@@ -101,6 +111,136 @@ class DataBase
         return !empty($this->foreignKeys) ? count($this->foreignKeys) : (int)$this->relationships;
     }
 
+    /**
+     * Sanitize SQL identifier (table/column name)
+     * Only allows alphanumeric characters and underscores, must start with letter or underscore
+     * 
+     * @param string $identifier The identifier to sanitize
+     * @return string The sanitized identifier
+     * @throws \InvalidArgumentException If identifier is invalid
+     */
+    protected function sanitizeIdentifier(string $identifier): string
+    {
+        // Remove any whitespace
+        $identifier = trim($identifier);
+        
+        // Validate format: must start with letter or underscore, followed by alphanumeric/underscore
+        if (!preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/', $identifier)) {
+            throw new \InvalidArgumentException(
+                "Invalid SQL identifier: '{$identifier}'. Only alphanumeric characters and underscores are allowed, and it must start with a letter or underscore."
+            );
+        }
+        
+        return $identifier;
+    }
+
+    /**
+     * Sanitize multiple identifiers
+     * 
+     * @param array $identifiers Array of identifiers to sanitize
+     * @return array Array of sanitized identifiers
+     * @throws \InvalidArgumentException If any identifier is invalid
+     */
+    protected function sanitizeIdentifiers(array $identifiers): array
+    {
+        return array_map([$this, 'sanitizeIdentifier'], $identifiers);
+    }
+
+    /**
+     * Ensure database connection is established
+     * @throws DatabaseConnectionException
+     */
+    protected function ensureConnection(): void
+    {
+        if ($this->pdo === null) {
+            try {
+                $this->connect();
+            } catch (DatabaseConnectionException | ConnectionError $e) {
+                if ($e instanceof ConnectionError) {
+                    // Convert legacy exception
+                    throw new DatabaseConnectionException(
+                        $e->getMessage(),
+                        $e->getCode(),
+                        $e,
+                        $this->config
+                    );
+                }
+                throw $e;
+            }
+        }
+
+        if (!$this->pdo) {
+            throw new DatabaseConnectionException(
+                "Database connection failed: PDO instance is null",
+                0,
+                null,
+                $this->config
+            );
+        }
+    }
+
+    /**
+     * Validate data against column definitions
+     * 
+     * @param array $data Data to validate
+     * @param bool $isUpdate Whether this is an update operation
+     * @return array Validated data
+     * @throws \InvalidArgumentException If validation fails
+     */
+    protected function validateData(array $data, bool $isUpdate = false): array
+    {
+        if (empty($data)) {
+            throw new \InvalidArgumentException("Data array cannot be empty");
+        }
+
+        $validated = [];
+        
+        foreach ($data as $column => $value) {
+            // Skip unknown columns in update mode
+            if (!isset($this->columns[$column])) {
+                if (!$isUpdate) {
+                    throw new \InvalidArgumentException("Unknown column: {$column}");
+                }
+                continue;
+            }
+
+            // Basic validation - check for null values on non-nullable columns
+            $columnType = $this->columns[$column];
+            if (!$isUpdate && !$columnType->isNullable() && ($value === null || $value === '')) {
+                throw new \InvalidArgumentException("Required field missing or empty: {$column}");
+            }
+
+            // String length validation (basic check)
+            if (is_string($value) && strlen($value) > 65535) {
+                throw new \InvalidArgumentException("Value too long for column: {$column}");
+            }
+
+            $validated[$column] = $value;
+        }
+
+        return $validated;
+    }
+
+    /**
+     * Get allowed file extensions for a MIME type
+     * 
+     * @param string $mimeType MIME type
+     * @return array Allowed extensions
+     */
+    private function getAllowedExtensions(string $mimeType): array
+    {
+        $map = [
+            'image/jpeg' => ['jpg', 'jpeg'],
+            'image/png' => ['png'],
+            'image/gif' => ['gif'],
+            'image/webp' => ['webp'],
+            'application/pdf' => ['pdf'],
+            'text/plain' => ['txt'],
+            'text/csv' => ['csv'],
+        ];
+        return $map[$mimeType] ?? [];
+    }
+
     // todo: execute the connect function by default on call of the function
 
     /**
@@ -108,6 +248,11 @@ class DataBase
      */
     public function connect()
     {
+        // Don't reconnect if already connected
+        if ($this->pdo !== null) {
+            return true;
+        }
+        
         try {
             /*  $this->pdo = new \PDO(
                 "mysql:host={$this->config['host']};dbname={$this->config['dbname']};port=3306",
@@ -138,23 +283,62 @@ class DataBase
      */
     public function execute(string $query, array $params = []): bool
     {
-        $this->connect();
+        // Only connect if not already connected
         if (!$this->pdo) {
-            echo "Database connection failed";
-            return false;
+            try {
+                $this->connect();
+            } catch (DatabaseConnectionException $e) {
+                error_log("Database connection failed: " . $e->getFormattedMessage());
+                throw $e;
+            } catch (ConnectionError $e) {
+                // Legacy exception handling
+                error_log("Database connection failed: " . $e->getMessage());
+                throw $e;
+            }
+        }
+
+        if (!$this->pdo) {
+            throw new DatabaseConnectionException(
+                "Database connection failed: PDO instance is null",
+                0,
+                null,
+                $this->config
+            );
         }
 
         try {
             $stmt = $this->pdo->prepare($query);
-            return $stmt->execute($params);
+            $result = $stmt->execute($params);
+            if (!$result) {
+                $errorInfo = $stmt->errorInfo();
+                throw new DatabaseQueryException(
+                    "SQL execution failed: " . ($errorInfo[2] ?? 'Unknown error'),
+                    (int)($errorInfo[0] ?? 0),
+                    null,
+                    $query,
+                    $params,
+                    $errorInfo
+                );
+            }
+            return $result;
         } catch (\PDOException $e) {
-            return false;
+            $errorInfo = $e->errorInfo ?? ['', $e->getCode(), $e->getMessage()];
+            throw new DatabaseQueryException(
+                "Database query failed: " . $e->getMessage(),
+                (int)$e->getCode(),
+                $e,
+                $query,
+                $params,
+                $errorInfo
+            );
         }
     }
 
     public function getAddColumnSQL(string $column, ColumnType $type): string
     {
-        return "ALTER TABLE " . $this->tableName . " ADD $column " . $type->getSql();
+        $column = $this->sanitizeIdentifier($column);
+        $tableName = $this->sanitizeIdentifier($this->tableName);
+        return "ALTER TABLE `{$tableName}` ADD `{$column}` " . $type->getSql();
     }
 
     public function addColumnToTable(string $column, ColumnType $type): bool
@@ -181,7 +365,8 @@ class DataBase
 
         $constraintDefinitions = $this->buildForeignKeySql();
 
-        $sql = "CREATE TABLE IF NOT EXISTS {$this->tableName} (\n";
+        $tableName = $this->sanitizeIdentifier($this->tableName);
+        $sql = "CREATE TABLE IF NOT EXISTS `{$tableName}` (\n";
         $sql .= implode(",\n", array_merge($columnDefinitions, $constraintDefinitions));
         $sql .= "\n) ENGINE=InnoDB;";
         return $sql;
@@ -268,20 +453,26 @@ class DataBase
 
     // CRUD operations and other methods...
 
-    public function findAll(Int $page = 1, Int $limit = 5)
+    public function findAll(int $page = 1, int $limit = 5): self
     {
-        $n = $this->connect();
-        if (!$this->pdo) {
-            return $n;
-        }
+        $this->ensureConnection();
+        
         try {
-
-            $stmt = $this->pdo->prepare("SELECT * FROM {$this->tableName}");
+            $tableName = $this->sanitizeIdentifier($this->tableName);
+            $stmt = $this->pdo->prepare("SELECT * FROM `{$tableName}`");
             $stmt->execute();
             $this->results = $stmt->fetchAll(\PDO::FETCH_ASSOC);
             return $this;
         } catch (\PDOException $e) {
-            return 'errror' . $e->getMessage();
+            $errorInfo = $e->errorInfo ?? ['', $e->getCode(), $e->getMessage()];
+            throw new DatabaseQueryException(
+                "Failed to fetch records: " . $e->getMessage(),
+                (int)$e->getCode(),
+                $e,
+                "SELECT * FROM `{$this->tableName}`",
+                [],
+                $errorInfo
+            );
         }
     }
 
@@ -310,118 +501,175 @@ class DataBase
         $outP = null;
         $uploadDir = dirname(__DIR__) . '/../uploads/';
 
-        // Create the uploads directory if it doesn't exist
+        // Create directory with secure permissions
         if (!is_dir($uploadDir)) {
-            mkdir($uploadDir, 0777, true);
+            mkdir($uploadDir, 0750, true);
         }
 
         // Loop through the file fields
         foreach ($this->fileFields as $fileField) {
             // Check if the file field exists and there was no upload error
-            if (isset($_FILES[$fileField]) && $_FILES[$fileField]['error'] !== UPLOAD_ERR_NO_FILE) {
-                // Continue only if no error occurred with the file upload
-                if ($_FILES[$fileField]['error'] === UPLOAD_ERR_OK) {
-                    $originalFilename = basename($_FILES[$fileField]['name']);
-                    $pathinfo = pathinfo($originalFilename);
-                    $extension = $pathinfo['extension'];
-
-                    // Generate a unique ID for the file
-                    $uniqueId = uniqid('', true);
-                    $filename = $uniqueId . '.' . $extension;
-
-                    $targetFilePath = $uploadDir . $filename;
-
-                    // Move the uploaded file to the target directory
-                    if (move_uploaded_file($_FILES[$fileField]['tmp_name'], $targetFilePath)) {
-                        // Save the filename in the $data array for future use (e.g., storing in the database)
-                        $data[$fileField] = $filename;
-                        $outP = $data;
-                    } else {
-                        return "Error uploading file: " . $_FILES[$fileField]['name'];
-                    }
-                } else {
-                    // Handle different file upload errors (optional)
-                    return "File upload error for field: " . $fileField;
-                }
+            if (!isset($_FILES[$fileField]) || $_FILES[$fileField]['error'] === UPLOAD_ERR_NO_FILE) {
+                continue;
             }
+
+            if ($_FILES[$fileField]['error'] !== UPLOAD_ERR_OK) {
+                throw new \RuntimeException(
+                    "File upload error for field: {$fileField}. Error code: " . $_FILES[$fileField]['error']
+                );
+            }
+
+            // Validate file size
+            if ($_FILES[$fileField]['size'] > $this->maxFileSize) {
+                throw new \RuntimeException(
+                    "File too large for field: {$fileField}. Maximum size: " . 
+                    round($this->maxFileSize / 1024 / 1024, 2) . "MB"
+                );
+            }
+
+            // Validate MIME type
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            $mimeType = finfo_file($finfo, $_FILES[$fileField]['tmp_name']);
+            finfo_close($finfo);
+
+            if (!in_array($mimeType, $this->allowedMimeTypes, true)) {
+                throw new \RuntimeException(
+                    "Invalid file type for field: {$fileField}. Allowed types: " . 
+                    implode(', ', $this->allowedMimeTypes)
+                );
+            }
+
+            // Generate secure filename
+            $originalFilename = basename($_FILES[$fileField]['name']);
+            $pathinfo = pathinfo($originalFilename);
+            $extension = strtolower($pathinfo['extension'] ?? '');
+            
+            // Validate extension matches MIME type
+            $allowedExtensions = $this->getAllowedExtensions($mimeType);
+            if (!in_array($extension, $allowedExtensions, true)) {
+                throw new \RuntimeException("File extension mismatch for field: {$fileField}");
+            }
+
+            // Generate cryptographically secure filename
+            $uniqueId = bin2hex(random_bytes(16));
+            $filename = $uniqueId . '.' . $extension;
+            $targetFilePath = $uploadDir . $filename;
+
+            // Move uploaded file
+            if (!move_uploaded_file($_FILES[$fileField]['tmp_name'], $targetFilePath)) {
+                throw new \RuntimeException("Error uploading file: " . $_FILES[$fileField]['name']);
+            }
+
+            // Set secure permissions
+            chmod($targetFilePath, 0640);
+            $data[$fileField] = $filename;
+            $outP = $data;
         }
 
         // Return the updated $data array or the original data if no files were uploaded
-        return $outP ? $outP : $data;
+        return $outP ?: $data;
     }
 
 
-    public function uploadHelper(array $data)
+    public function uploadHelper(array $data): array
     {
         $uploadDir = dirname(__DIR__) . '/../uploads/';
         $filenames = [];
+        
         if (!is_dir($uploadDir)) {
-            mkdir($uploadDir, 0777, true);
+            mkdir($uploadDir, 0750, true);
         }
 
         foreach ($this->fileFields as $fileField) {
-            if (isset($_FILES[$fileField]) && $_FILES[$fileField]['error'] === UPLOAD_ERR_OK) {
-                $originalFilename = basename($_FILES[$fileField]['name']);
-                $pathinfo = pathinfo($originalFilename);
-                $extension = $pathinfo['extension'];
+            if (!isset($_FILES[$fileField]) || $_FILES[$fileField]['error'] !== UPLOAD_ERR_OK) {
+                continue;
+            }
 
-                // Generate a unique ID and create the new filename
-                $uniqueId = uniqid('', true); // Generate a unique ID
-                $filename = $uniqueId . '.' . $extension; // Append the file extension to the unique ID
+            // Validate file size
+            if ($_FILES[$fileField]['size'] > $this->maxFileSize) {
+                throw new \RuntimeException(
+                    "File too large for field: {$fileField}. Maximum size: " . 
+                    round($this->maxFileSize / 1024 / 1024, 2) . "MB"
+                );
+            }
 
-                $targetFilePath = $uploadDir . $filename;
+            // Validate MIME type
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            $mimeType = finfo_file($finfo, $_FILES[$fileField]['tmp_name']);
+            finfo_close($finfo);
 
-                if (move_uploaded_file($_FILES[$fileField]['tmp_name'], $targetFilePath)) {
-                    $filenames[$fileField] = $filename; // Save only the filename to the database
-                } else {
-                    return "Error uploading file: " . $_FILES[$fileField]['name'];
-                }
+            if (!in_array($mimeType, $this->allowedMimeTypes, true)) {
+                throw new \RuntimeException(
+                    "Invalid file type for field: {$fileField}. Allowed types: " . 
+                    implode(', ', $this->allowedMimeTypes)
+                );
+            }
+
+            $originalFilename = basename($_FILES[$fileField]['name']);
+            $pathinfo = pathinfo($originalFilename);
+            $extension = strtolower($pathinfo['extension'] ?? '');
+            
+            // Validate extension matches MIME type
+            $allowedExtensions = $this->getAllowedExtensions($mimeType);
+            if (!in_array($extension, $allowedExtensions, true)) {
+                throw new \RuntimeException("File extension mismatch for field: {$fileField}");
+            }
+
+            // Generate cryptographically secure filename
+            $uniqueId = bin2hex(random_bytes(16));
+            $filename = $uniqueId . '.' . $extension;
+            $targetFilePath = $uploadDir . $filename;
+
+            if (move_uploaded_file($_FILES[$fileField]['tmp_name'], $targetFilePath)) {
+                chmod($targetFilePath, 0640);
+                $filenames[$fileField] = $filename;
+            } else {
+                throw new \RuntimeException("Error uploading file: " . $_FILES[$fileField]['name']);
             }
         }
+        
         return $filenames;
     }
 
 
 
-    public function findOne(array $criteria)
+    public function findOne(array $criteria): self
     {
-        $this->connect();
-        if (!$this->pdo) {
-            echo "Database connection failed";
-            return false;
+        $this->ensureConnection();
+        
+        if (empty($criteria)) {
+            throw new \InvalidArgumentException("Criteria cannot be empty");
         }
 
         try {
-            // Construct the WHERE clause from the criteria array
-            $where = implode(" AND ", array_map(function ($key) {
-                return "$key = ?";
-            }, array_keys($criteria)));
+            // Sanitize column names
+            $criteriaKeys = $this->sanitizeIdentifiers(array_keys($criteria));
+            $where = implode(" AND ", array_map(fn($key) => "`{$key}` = ?", $criteriaKeys));
 
-            // Prepare the SQL statement
-            $stmt = $this->pdo->prepare("SELECT * FROM {$this->tableName} WHERE $where LIMIT 1");
+            $tableName = $this->sanitizeIdentifier($this->tableName);
+            $stmt = $this->pdo->prepare("SELECT * FROM `{$tableName}` WHERE {$where} LIMIT 1");
 
-            // Execute the statement with the criteria values
             $stmt->execute(array_values($criteria));
-
-            // Fetch and return the result
             $this->results = $stmt->fetch(\PDO::FETCH_ASSOC);
             return $this;
         } catch (\PDOException $e) {
-            return $e->getMessage();
+            $errorInfo = $e->errorInfo ?? ['', $e->getCode(), $e->getMessage()];
+            throw new DatabaseQueryException(
+                "Failed to find record: " . $e->getMessage(),
+                (int)$e->getCode(),
+                $e,
+                "SELECT * FROM `{$this->tableName}` WHERE ...",
+                $criteria,
+                $errorInfo
+            );
         }
     }
 
 
 
-    public function addOne(array $data)
+    public function addOne(array $data): bool
     {
-
-        $n = $this->connect();
-
-        if (!$this->pdo) {
-            //echo "Database connection failed";
-            return $n;
-        }
+        $this->ensureConnection();
 
         // Check if files are present in the $data array
         $hasFiles = false;
@@ -434,174 +682,325 @@ class DataBase
 
         // If files exist in the posted data, handle file uploads
         if ($hasFiles) {
-            $fileUpload = $this->handleFileUploads($data);
-            if ($fileUpload == null) {
-                return false;  // Return false if file upload fails
-            } else {
-                $data = $fileUpload;  // Merge file data with the posted data
+            try {
+                $fileUpload = $this->handleFileUploads($data);
+                if ($fileUpload === null) {
+                    return false;  // Return false if file upload fails
+                } else {
+                    $data = $fileUpload;  // Merge file data with the posted data
+                }
+            } catch (\Exception $e) {
+                error_log("File upload error: " . $e->getMessage());
+                return false;
             }
         }
 
+        // Validate input data
         try {
-            // Prepare and execute the INSERT query
-            error_log(json_encode($data));
-            $keys = implode(", ", array_keys($data));
-            $placeholders = implode(", ", array_fill(0, count($data), "?"));
-            $stmt = $this->pdo->prepare("INSERT INTO {$this->tableName} ($keys) VALUES ($placeholders)");
+            $data = $this->validateData($data, false);
+        } catch (\InvalidArgumentException $e) {
+            throw $e;
+        }
 
+        try {
+            // Sanitize column names to prevent SQL injection
+            $keys = array_keys($data);
+            $sanitizedKeys = $this->sanitizeIdentifiers($keys);
+            
+            // Build SQL with sanitized column names
+            $keysStr = implode(", ", array_map(fn($k) => "`{$k}`", $sanitizedKeys));
+            $placeholders = implode(", ", array_fill(0, count($data), "?"));
+            
+            $tableName = $this->sanitizeIdentifier($this->tableName);
+            $stmt = $this->pdo->prepare("INSERT INTO `{$tableName}` ({$keysStr}) VALUES ({$placeholders})");
+            
             return $stmt->execute(array_values($data));
         } catch (\PDOException $e) {
-            return $e->getMessage();
+            $errorInfo = $e->errorInfo ?? ['', $e->getCode(), $e->getMessage()];
+            throw new DatabaseQueryException(
+                "Failed to insert record: " . $e->getMessage(),
+                (int)$e->getCode(),
+                $e,
+                "INSERT INTO `{$this->tableName}` ...",
+                $data,
+                $errorInfo
+            );
         }
     }
 
 
-    public function addMany(array $data)
+    public function addMany(array $data): bool
     {
-        $this->connect();
-        if (!$this->pdo) {
-            echo "Database connection failed";
-            return false;
+        $this->ensureConnection();
+        
+        if (empty($data) || !is_array($data[0] ?? null)) {
+            throw new \InvalidArgumentException("Data must be a non-empty array of arrays");
         }
 
         try {
-
-
-            $keys = implode(", ", array_keys($data[0]));
+            // Sanitize column names from first row
+            $keys = array_keys($data[0]);
+            $sanitizedKeys = $this->sanitizeIdentifiers($keys);
+            $keysStr = implode(", ", array_map(fn($k) => "`{$k}`", $sanitizedKeys));
             $placeholders = implode(", ", array_fill(0, count($data[0]), "?"));
-            $stmt = $this->pdo->prepare("INSERT INTO {$this->tableName} ($keys) VALUES ($placeholders)");
+            
+            $tableName = $this->sanitizeIdentifier($this->tableName);
+            $stmt = $this->pdo->prepare("INSERT INTO `{$tableName}` ({$keysStr}) VALUES ({$placeholders})");
 
             try {
                 $this->pdo->beginTransaction();
                 foreach ($data as $row) {
-                    $stmt->execute(array_values($row));
+                    // Ensure all rows have the same keys
+                    $rowValues = [];
+                    foreach ($sanitizedKeys as $key) {
+                        $rowValues[] = $row[$key] ?? null;
+                    }
+                    $stmt->execute($rowValues);
                 }
                 $this->pdo->commit();
                 return true;
             } catch (\PDOException $e) {
                 $this->pdo->rollBack();
-                echo "Failed to add records: " . $e->getMessage();
-                return false;
+                $errorInfo = $e->errorInfo ?? ['', $e->getCode(), $e->getMessage()];
+                throw new DatabaseQueryException(
+                    "Failed to add records: " . $e->getMessage(),
+                    (int)$e->getCode(),
+                    $e,
+                    "INSERT INTO `{$tableName}` ...",
+                    $data,
+                    $errorInfo
+                );
             }
         } catch (\PDOException $e) {
-            return $e->getMessage();
+            $errorInfo = $e->errorInfo ?? ['', $e->getCode(), $e->getMessage()];
+            throw new DatabaseQueryException(
+                "Failed to prepare insert statement: " . $e->getMessage(),
+                (int)$e->getCode(),
+                $e,
+                "INSERT INTO `{$this->tableName}` ...",
+                [],
+                $errorInfo
+            );
         }
     }
 
-    public function update(array $dataToUpdate, array $updateCondition)
+    public function update(array $dataToUpdate, array $updateCondition): bool
     {
-        $this->connect();
-        if (!$this->pdo) {
-            echo "Database connection failed";
-            return false;
+        $this->ensureConnection();
+        
+        if (empty($dataToUpdate)) {
+            throw new \InvalidArgumentException("Data to update cannot be empty");
+        }
+        
+        if (empty($updateCondition)) {
+            throw new \InvalidArgumentException("Update condition cannot be empty");
         }
 
         if (!empty($this->fileFields)) {
-            $fileUploadError = $this->handleFileUploads($dataToUpdate);
-            if ($fileUploadError) {
-                return $fileUploadError;
+            try {
+                $fileUploadResult = $this->handleFileUploads($dataToUpdate);
+                if ($fileUploadResult && is_string($fileUploadResult)) {
+                    // File upload returned an error string (legacy behavior)
+                    throw new \RuntimeException($fileUploadResult);
+                }
+                if ($fileUploadResult) {
+                    $dataToUpdate = $fileUploadResult;
+                }
+            } catch (\Exception $e) {
+                throw new \RuntimeException("File upload failed: " . $e->getMessage(), 0, $e);
             }
         }
 
+        // Validate input data
         try {
+            $dataToUpdate = $this->validateData($dataToUpdate, true);
+        } catch (\InvalidArgumentException $e) {
+            throw $e;
+        }
 
-            $set = implode(", ", array_map(fn($key) => "$key = ?", array_keys($dataToUpdate)));
-            $where = implode(" AND ", array_map(fn($key) => "$key = ?", array_keys($updateCondition)));
-            $stmt = $this->pdo->prepare("UPDATE {$this->tableName} SET $set WHERE $where");
-            $outp = $stmt->execute(array_merge(array_values($dataToUpdate), array_values($updateCondition)));
+        try {
+            // Sanitize column names
+            $updateKeys = $this->sanitizeIdentifiers(array_keys($dataToUpdate));
+            $conditionKeys = $this->sanitizeIdentifiers(array_keys($updateCondition));
+            
+            $set = implode(", ", array_map(fn($key) => "`{$key}` = ?", $updateKeys));
+            $where = implode(" AND ", array_map(fn($key) => "`{$key}` = ?", $conditionKeys));
+            
+            $tableName = $this->sanitizeIdentifier($this->tableName);
+            $stmt = $this->pdo->prepare("UPDATE `{$tableName}` SET {$set} WHERE {$where}");
+            
+            $outp = $stmt->execute(array_merge(
+                array_values($dataToUpdate),
+                array_values($updateCondition)
+            ));
+            
             return $outp;
         } catch (\PDOException $e) {
-            return $e->getMessage();
+            $errorInfo = $e->errorInfo ?? ['', $e->getCode(), $e->getMessage()];
+            throw new DatabaseQueryException(
+                "Failed to update record: " . $e->getMessage(),
+                (int)$e->getCode(),
+                $e,
+                "UPDATE `{$this->tableName}` SET ...",
+                array_merge($dataToUpdate, $updateCondition),
+                $errorInfo
+            );
         }
     }
 
-    public function updateMany(array $data, array $conditions)
+    public function updateMany(array $data, array $conditions): bool
     {
-        $this->connect();
-        if (!$this->pdo) {
-            echo "Database connection failed";
-            return false;
-            //exit();
+        $this->ensureConnection();
+        
+        if (empty($data) || empty($conditions)) {
+            throw new \InvalidArgumentException("Data and conditions cannot be empty");
+        }
+        
+        if (count($data) !== count($conditions)) {
+            throw new \InvalidArgumentException("Data and conditions arrays must have the same length");
         }
 
         try {
             $this->pdo->beginTransaction();
+            
             foreach ($data as $index => $row) {
-                $set = implode(", ", array_map(fn($key) => "$key = ?", array_keys($row)));
-                $where = implode(" AND ", array_map(fn($key) => "$key = ?", array_keys($conditions[$index])));
-                $stmt = $this->pdo->prepare("UPDATE {$this->tableName} SET $set WHERE $where");
-                $stmt->execute(array_merge(array_values($row), array_values($conditions[$index])));
+                if (empty($row) || empty($conditions[$index])) {
+                    throw new \InvalidArgumentException("Row and condition at index {$index} cannot be empty");
+                }
+                
+                // Sanitize column names
+                $updateKeys = $this->sanitizeIdentifiers(array_keys($row));
+                $conditionKeys = $this->sanitizeIdentifiers(array_keys($conditions[$index]));
+                
+                $set = implode(", ", array_map(fn($key) => "`{$key}` = ?", $updateKeys));
+                $where = implode(" AND ", array_map(fn($key) => "`{$key}` = ?", $conditionKeys));
+                
+                $tableName = $this->sanitizeIdentifier($this->tableName);
+                $stmt = $this->pdo->prepare("UPDATE `{$tableName}` SET {$set} WHERE {$where}");
+                $stmt->execute(array_merge(
+                    array_values($row),
+                    array_values($conditions[$index])
+                ));
             }
+            
             $this->pdo->commit();
             return true;
         } catch (\PDOException $e) {
             $this->pdo->rollBack();
-            echo "Failed to update records: " . $e->getMessage();
-            return false;
+            $errorInfo = $e->errorInfo ?? ['', $e->getCode(), $e->getMessage()];
+            throw new DatabaseQueryException(
+                "Failed to update records: " . $e->getMessage(),
+                (int)$e->getCode(),
+                $e,
+                "UPDATE `{$this->tableName}` SET ...",
+                [],
+                $errorInfo
+            );
         }
     }
 
-    public function delete(array $condition)
+    public function delete(array $condition): bool
     {
-        $this->connect();
-        if (!$this->pdo) {
-            echo "Database connection failed";
-            return false;
+        $this->ensureConnection();
+        
+        if (empty($condition)) {
+            throw new \InvalidArgumentException("Delete condition cannot be empty");
         }
+        
         try {
-
-            $where = implode(" AND ", array_map(fn($key) => "$key = ?", array_keys($condition)));
-            $stmt = $this->pdo->prepare("DELETE FROM {$this->tableName} WHERE $where");
+            // Sanitize column names
+            $conditionKeys = $this->sanitizeIdentifiers(array_keys($condition));
+            $where = implode(" AND ", array_map(fn($key) => "`{$key}` = ?", $conditionKeys));
+            
+            $tableName = $this->sanitizeIdentifier($this->tableName);
+            $stmt = $this->pdo->prepare("DELETE FROM `{$tableName}` WHERE {$where}");
+            
             return $stmt->execute(array_values($condition));
         } catch (\PDOException $e) {
-            return $e->getMessage();
+            $errorInfo = $e->errorInfo ?? ['', $e->getCode(), $e->getMessage()];
+            throw new DatabaseQueryException(
+                "Failed to delete record: " . $e->getMessage(),
+                (int)$e->getCode(),
+                $e,
+                "DELETE FROM `{$this->tableName}` WHERE ...",
+                $condition,
+                $errorInfo
+            );
         }
     }
 
-    public function deleteMany(array $conditions)
+    public function deleteMany(array $conditions): bool
     {
-        $this->connect();
-        if (!$this->pdo) {
-            echo "Database connection failed";
-            return false;
+        $this->ensureConnection();
+        
+        if (empty($conditions)) {
+            throw new \InvalidArgumentException("Delete conditions cannot be empty");
         }
+        
         try {
-
-            try {
-                $this->pdo->beginTransaction();
-                foreach ($conditions as $condition) {
-                    $where = implode(" AND ", array_map(fn($key) => "$key = ?", array_keys($condition)));
-                    $stmt = $this->pdo->prepare("DELETE FROM {$this->tableName} WHERE $where");
-                    $stmt->execute(array_values($condition));
+            $this->pdo->beginTransaction();
+            
+            foreach ($conditions as $condition) {
+                if (empty($condition)) {
+                    throw new \InvalidArgumentException("Delete condition cannot be empty");
                 }
-                $this->pdo->commit();
-                return true;
-            } catch (\PDOException $e) {
-                $this->pdo->rollBack();
-                echo "Failed to delete records: " . $e->getMessage();
-                return false;
+                
+                // Sanitize column names
+                $conditionKeys = $this->sanitizeIdentifiers(array_keys($condition));
+                $where = implode(" AND ", array_map(fn($key) => "`{$key}` = ?", $conditionKeys));
+                
+                $tableName = $this->sanitizeIdentifier($this->tableName);
+                $stmt = $this->pdo->prepare("DELETE FROM `{$tableName}` WHERE {$where}");
+                $stmt->execute(array_values($condition));
             }
+            
+            $this->pdo->commit();
+            return true;
         } catch (\PDOException $e) {
-            return $e->getMessage();
+            $this->pdo->rollBack();
+            $errorInfo = $e->errorInfo ?? ['', $e->getCode(), $e->getMessage()];
+            throw new DatabaseQueryException(
+                "Failed to delete records: " . $e->getMessage(),
+                (int)$e->getCode(),
+                $e,
+                "DELETE FROM `{$this->tableName}` WHERE ...",
+                [],
+                $errorInfo
+            );
         }
     }
 
-    public function search(array $criteria)
+    public function search(array $criteria): self
     {
-        $this->connect();
-        if (!$this->pdo) {
-            echo "Database connection failed";
-            return false;
+        $this->ensureConnection();
+        
+        if (empty($criteria)) {
+            throw new \InvalidArgumentException("Search criteria cannot be empty");
         }
+        
         try {
-
-            $where = implode(" AND ", array_map(fn($key) => "$key LIKE ?", array_keys($criteria)));
-            $stmt = $this->pdo->prepare("SELECT * FROM {$this->tableName} WHERE $where");
-            $stmt->execute(array_map(fn($value) => "%$value%", array_values($criteria)));
+            // Sanitize column names
+            $criteriaKeys = $this->sanitizeIdentifiers(array_keys($criteria));
+            $where = implode(" AND ", array_map(fn($key) => "`{$key}` LIKE ?", $criteriaKeys));
+            
+            $tableName = $this->sanitizeIdentifier($this->tableName);
+            $stmt = $this->pdo->prepare("SELECT * FROM `{$tableName}` WHERE {$where}");
+            
+            $searchValues = array_map(fn($value) => "%{$value}%", array_values($criteria));
+            $stmt->execute($searchValues);
+            
             $this->results = $stmt->fetchAll(\PDO::FETCH_ASSOC);
             return $this;
         } catch (\PDOException $e) {
-            return $e->getMessage();
+            $errorInfo = $e->errorInfo ?? ['', $e->getCode(), $e->getMessage()];
+            throw new DatabaseQueryException(
+                "Failed to search records: " . $e->getMessage(),
+                (int)$e->getCode(),
+                $e,
+                "SELECT * FROM `{$this->tableName}` WHERE ...",
+                $criteria,
+                $errorInfo
+            );
         }
     }
 
@@ -657,42 +1056,113 @@ class DataBase
         }
     }
 
-    public function getTableSchema($tableName)
+    public function getTableSchema(string $tableName): array
     {
-        $stmt = $this->pdo->prepare("DESCRIBE $tableName");
-        $stmt->execute();
-        return $stmt->fetchAll(\PDO::FETCH_COLUMN);
+        $this->ensureConnection();
+        
+        $tableName = $this->sanitizeIdentifier($tableName);
+        
+        try {
+            $stmt = $this->pdo->prepare("DESCRIBE `{$tableName}`");
+            $stmt->execute();
+            return $stmt->fetchAll(\PDO::FETCH_COLUMN);
+        } catch (\PDOException $e) {
+            $errorInfo = $e->errorInfo ?? ['', $e->getCode(), $e->getMessage()];
+            throw new DatabaseQueryException(
+                "Failed to get table schema: " . $e->getMessage(),
+                (int)$e->getCode(),
+                $e,
+                "DESCRIBE `{$tableName}`",
+                [],
+                $errorInfo
+            );
+        }
     }
 
-    public function removeColumn($tableName, $columnName)
+    public function removeColumn(string $tableName, string $columnName): bool
     {
-        $stmt = $this->pdo->prepare("ALTER TABLE $tableName DROP COLUMN $columnName");
-        // echo $stmt>;
-        return $stmt->execute();
+        $this->ensureConnection();
+        
+        $tableName = $this->sanitizeIdentifier($tableName);
+        $columnName = $this->sanitizeIdentifier($columnName);
+        
+        try {
+            $stmt = $this->pdo->prepare("ALTER TABLE `{$tableName}` DROP COLUMN `{$columnName}`");
+            return $stmt->execute();
+        } catch (\PDOException $e) {
+            $errorInfo = $e->errorInfo ?? ['', $e->getCode(), $e->getMessage()];
+            throw new DatabaseQueryException(
+                "Failed to remove column: " . $e->getMessage(),
+                (int)$e->getCode(),
+                $e,
+                "ALTER TABLE `{$tableName}` DROP COLUMN `{$columnName}`",
+                [],
+                $errorInfo
+            );
+        }
     }
 
-    public function updateColumnType($tableName, $columnName, $newColumnType)
+    public function updateColumnType(string $tableName, string $columnName, string $newColumnType): bool
     {
-        $stmt = $this->pdo->prepare("ALTER TABLE $tableName MODIFY $columnName $newColumnType");
-        return $stmt->execute();
+        $this->ensureConnection();
+        
+        $tableName = $this->sanitizeIdentifier($tableName);
+        $columnName = $this->sanitizeIdentifier($columnName);
+        
+        // Validate column type (basic check - you may want to expand this)
+        if (!preg_match('/^[A-Za-z0-9_()\s,]+$/', $newColumnType)) {
+            throw new \InvalidArgumentException("Invalid column type: {$newColumnType}");
+        }
+        
+        try {
+            $stmt = $this->pdo->prepare("ALTER TABLE `{$tableName}` MODIFY `{$columnName}` {$newColumnType}");
+            return $stmt->execute();
+        } catch (\PDOException $e) {
+            $errorInfo = $e->errorInfo ?? ['', $e->getCode(), $e->getMessage()];
+            throw new DatabaseQueryException(
+                "Failed to update column type: " . $e->getMessage(),
+                (int)$e->getCode(),
+                $e,
+                "ALTER TABLE `{$tableName}` MODIFY `{$columnName}` {$newColumnType}",
+                [],
+                $errorInfo
+            );
+        }
     }
 
     public function getDropColumnSQL(string $column): string
     {
-        return "ALTER TABLE " . $this->tableName . " DROP COLUMN $column";
+        $column = $this->sanitizeIdentifier($column);
+        $tableName = $this->sanitizeIdentifier($this->tableName);
+        return "ALTER TABLE `{$tableName}` DROP COLUMN `{$column}`";
     }
 
     public function dropColumn(string $tableName, string $column): bool
     {
-        $sql = "ALTER TABLE " . $tableName . " DROP COLUMN $column";
-        return $this->sqlQuery($sql) !== false;
+        $tableName = $this->sanitizeIdentifier($tableName);
+        $column = $this->sanitizeIdentifier($column);
+        $sql = $this->getDropColumnSQL($column);
+        
+        try {
+            $this->execute($sql);
+            return true;
+        } catch (DatabaseQueryException $e) {
+            throw $e;
+        }
     }
 
-    public function addColumnTable($tableName, $columnName, $columnType)
+    public function addColumnTable(string $tableName, string $columnName, string $columnType): bool
     {
-        // Sanitize table and column names (ensure they are valid SQL identifiers)
-        $tableName = preg_replace('/[^a-zA-Z0-9_]/', '', $tableName);
-        $columnName = preg_replace('/[^a-zA-Z0-9_]/', '', $columnName);
+        $this->ensureConnection();
+        
+        // Sanitize table and column names
+        $tableName = $this->sanitizeIdentifier($tableName);
+        $columnName = $this->sanitizeIdentifier($columnName);
+        
+        // Validate column type
+        if (!preg_match('/^[A-Za-z0-9_()\s,]+$/', $columnType)) {
+            throw new \InvalidArgumentException("Invalid column type: {$columnType}");
+        }
 
         // Check if the column already exists in the table
         $stmt = $this->pdo->prepare(
@@ -712,12 +1182,12 @@ class DataBase
         $columnExists = $stmt->fetchColumn();
 
         if ($columnExists == 0) {
-            // Directly inject the column name and type (since placeholders cannot be used for SQL structure)
-            $sql = "ALTER TABLE $tableName ADD $columnName $columnType";
+            // Use sanitized identifiers in SQL
+            $sql = "ALTER TABLE `{$tableName}` ADD `{$columnName}` {$columnType}";
             $stmt2 = $this->pdo->prepare($sql);
             return $stmt2->execute();
         } else {
-            // Return false or a custom message indicating that the column already exists
+            // Column already exists
             return false;
         }
     }
@@ -745,32 +1215,37 @@ class DataBase
         }
     }
 
-    public function dropTable($tableName)
+    public function dropTable(string $tableName): bool
     {
-        $this->connect();
-        if (!$this->pdo) {
-            echo "Database connection failed";
-            return false;
-        }
+        $this->ensureConnection();
+        
+        $tableName = $this->sanitizeIdentifier($tableName);
+        
         try {
-            $stmt = $this->pdo->prepare("DROP TABLE IF EXISTS $tableName");
+            $stmt = $this->pdo->prepare("DROP TABLE IF EXISTS `{$tableName}`");
             return $stmt->execute();
         } catch (\PDOException $e) {
-            return $e->getMessage();
+            $errorInfo = $e->errorInfo ?? ['', $e->getCode(), $e->getMessage()];
+            throw new DatabaseQueryException(
+                "Failed to drop table: " . $e->getMessage(),
+                (int)$e->getCode(),
+                $e,
+                "DROP TABLE IF EXISTS `{$tableName}`",
+                [],
+                $errorInfo
+            );
         }
     }
 
-    public function getColumns($tableName)
+    public function getColumns(string $tableName): array
     {
-        $this->connect();
-        if (!$this->pdo) {
-            echo "Database connection failed";
-            return false;
-        }
+        $this->ensureConnection();
+        
+        $tableName = $this->sanitizeIdentifier($tableName);
+        
         try {
-
             $columns = [];
-            $stmt = $this->pdo->prepare("SHOW COLUMNS FROM $tableName");
+            $stmt = $this->pdo->prepare("SHOW COLUMNS FROM `{$tableName}`");
             $stmt->execute();
             $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
             foreach ($rows as $row) {
@@ -778,7 +1253,15 @@ class DataBase
             }
             return $columns;
         } catch (\PDOException $e) {
-            return $e->getMessage();
+            $errorInfo = $e->errorInfo ?? ['', $e->getCode(), $e->getMessage()];
+            throw new DatabaseQueryException(
+                "Failed to get columns: " . $e->getMessage(),
+                (int)$e->getCode(),
+                $e,
+                "SHOW COLUMNS FROM `{$tableName}`",
+                [],
+                $errorInfo
+            );
         }
     }
 

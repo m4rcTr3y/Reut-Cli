@@ -1,12 +1,23 @@
 <?php
+declare(strict_types=1);
+
 namespace Reut\DB\Exceptions;
 
-class ConnectionError extends \Exception{
-    public function __construct($message, $code = 0) {
-            parent::__construct($message, $code);
-        }
+/**
+ * ConnectionError - Legacy exception class
+ * @deprecated Use DatabaseConnectionException instead
+ */
+class ConnectionError extends DatabaseConnectionException
+{
+    public function __construct($message = "Failed to connect to database", $code = 0, ?\Throwable $previous = null, array $config = []) {
+        parent::__construct($message, $code, $previous, $config);
+    }
 
-        public function getCustomInfo() {
-            return "This is a custom error related to: " . $this->getMessage();
-        }
+    /**
+     * Legacy method for backward compatibility
+     * @deprecated
+     */
+    public function getCustomInfo() {
+        return "Database connection error: " . $this->getMessage();
+    }
 }
