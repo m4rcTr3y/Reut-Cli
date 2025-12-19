@@ -12,11 +12,19 @@ class DatabaseCreator{
         if (count($argv) < 2) {
             echo "\nUsage: php manage.php <command>\n";
             echo "Commands:\n";
-            echo "  create            - Initial start of project or add tables from models to the database\n";
+            echo "  create            - Initial start of project or add tables from models to the database (alias of migrate)\n";
+            echo "  migrate           - Apply migrations from model definitions (ensures tables exist)\n";
+            echo "  sync              - Reconcile existing tables with models (may drop extra columns)\n";
             echo "  status            - Check for pending migrations in the models\n";
+            echo "  inspect           - Inspect database schema and sync model definitions\n";
+            echo "  rollback          - Rollback migrations (last batch, specific batch, or migration)\n";
+            echo "  validate-migrations - Validate migration SQL syntax and check for issues\n";
+            echo "  export-migrations - Export migration history to JSON/SQL file\n";
+            echo "  import-migrations - Import migration history from JSON/SQL file\n";
             echo "  generate:routes   - Generate routes for each model into the route/ folder\n";
             echo "  generate:model    - Generate model class, pass the model name into the console\n";
-            echo "  migrate           - Apply migrations to the table from changes in the model definition\n";
+            echo "  view              - Start the HTML schema viewer\n";
+            echo "  dev               - Start the built-in PHP dev server\n";
             echo "  -v, version       - Show CLI version\n";
             echo "  -h, help          - Show this help message\n";
             exit(1);

@@ -65,6 +65,10 @@ switch ($command) {
     case 'dev':
     case 'inspect':
     case 'sync':
+    case 'rollback':
+    case 'validate-migrations':
+    case 'export-migrations':
+    case 'import-migrations':
         $manageFile = getcwd() . DIRECTORY_SEPARATOR . 'manage.php';
         if (!file_exists($manageFile)) {
             echo "Error: manage.php not found in current directory." . PHP_EOL;
@@ -78,17 +82,22 @@ switch ($command) {
     case 'help':
     default:
         echo "Reut CLI Tool v1.3.0" . PHP_EOL;
-        echo "Usage: php manage.php <command>" . PHP_EOL;
+        echo "Usage: Reut <command> or php manage.php <command>" . PHP_EOL;
         echo "Commands:" . PHP_EOL;
-        echo "  create            - Initial start of project or add tables from models to the database" . PHP_EOL;
+        echo "  init              - Initialize a new REUT project" . PHP_EOL;
+        echo "  create            - Initial start of project or add tables from models (alias of migrate)" . PHP_EOL;
+        echo "  migrate           - Apply migrations from model definitions (ensures tables exist)" . PHP_EOL;
+        echo "  sync              - Reconcile existing tables with models (may drop extra columns)" . PHP_EOL;
         echo "  status            - Check for pending migrations in the models" . PHP_EOL;
+        echo "  inspect           - Inspect database schema and sync model definitions" . PHP_EOL;
+        echo "  rollback          - Rollback migrations (last batch, specific batch, or migration)" . PHP_EOL;
+        echo "  validate-migrations - Validate migration SQL syntax and check for issues" . PHP_EOL;
+        echo "  export-migrations - Export migration history to JSON/SQL file" . PHP_EOL;
+        echo "  import-migrations - Import migration history from JSON/SQL file" . PHP_EOL;
         echo "  generate:routes   - Generate routes for each model into the route/ folder" . PHP_EOL;
         echo "  generate:model    - Generate model class, pass the model name into the console" . PHP_EOL;
-        echo "  migrate           - Apply migrations to the table from changes in the model definition" . PHP_EOL;
         echo "  dev               - Start the local API dev server (built-in PHP server)" . PHP_EOL;
         echo "  view              - Spin up a local HTML viewer for your models" . PHP_EOL;
-        echo "  inspect           - Inspect database tables and sync model definitions" . PHP_EOL;
-        echo "  sync              - Reconcile database schema with existing tables (advanced)" . PHP_EOL;
         echo "  update            - Update REUT CLI to the latest version" . PHP_EOL;
         echo "  -v, version       - Show CLI version" . PHP_EOL;
         echo "  -h, help          - Show this help message" . PHP_EOL;
