@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Reut\DB\Creator;
+namespace Reut\DB;
 
 class DatabaseCreator{
 
@@ -67,7 +67,7 @@ class DatabaseCreator{
                 break;
             case '-v':
             case 'version':
-                echo "Reut CLI version 1.0.4\n";
+                echo "Reut CLI version 1.2.2\n";
                 break;
             default:
                 echo "Invalid command.\n";

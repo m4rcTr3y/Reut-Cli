@@ -1154,16 +1154,16 @@
         },
         {
             "name": "reut/core",
-            "version": "v1.1.0",
+            "version": "v1.1.6",
             "source": {
                 "type": "git",
                 "url": "https://github.com/m4rcTr3y/reut_core.git",
-                "reference": "c131ec5f8d55ffd04af796005564ca5fdb23e35b"
+                "reference": "3c62d20aef86eb0158549943c297b63e91bb95ad"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/m4rcTr3y/reut_core/zipball/c131ec5f8d55ffd04af796005564ca5fdb23e35b",
-                "reference": "c131ec5f8d55ffd04af796005564ca5fdb23e35b",
+                "url": "https://api.github.com/repos/m4rcTr3y/reut_core/zipball/3c62d20aef86eb0158549943c297b63e91bb95ad",
+                "reference": "3c62d20aef86eb0158549943c297b63e91bb95ad",
                 "shasum": ""
             },
             "require": {
@@ -1187,9 +1187,9 @@
             "description": "Internal core package for the REUT framework.",
             "support": {
                 "issues": "https://github.com/m4rcTr3y/reut_core/issues",
-                "source": "https://github.com/m4rcTr3y/reut_core/tree/v1.1.0"
+                "source": "https://github.com/m4rcTr3y/reut_core/tree/v1.1.6"
             },
-            "time": "2025-11-25T08:48:02+00:00"
+            "time": "2025-11-25T22:15:43+00:00"
         },
         {
             "name": "slim/psr7",

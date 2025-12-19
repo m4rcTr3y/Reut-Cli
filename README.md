@@ -70,7 +70,18 @@ If you see a stability error, install the development version:
 composer global require m4rc/reut_cli:dev-main
 ```
 
-> **Note:** Current version (`v1.2.0`). See [Packagist](https://packagist.org/packages/m4rc/reut_cli).
+> **Note:** Current version (`v1.2.2`). See [Packagist](https://packagist.org/packages/m4rc/reut_cli).
+
+### Updating REUT CLI
+
+Update to the latest version with a single command:
+
+```bash
+Reut update
+```
+
+This automatically clears the composer cache and updates to the latest version.
+>>>>>>> 05115002be09fb060fda8bfaf23480d356f0937c
 
 ### 3. Initialize a New REUT Project
 
@@ -135,8 +146,9 @@ Reut manage.php generate:model Users
 - **Global CLI commands** (if installed globally):  
     ```bash
     Reut <command>
-    Reut -v
-    Reut help
+    Reut update              # Update CLI to latest version
+    Reut -v                  # Show version
+    Reut help                # Show help
     ```
 
 ### API Docs Endpoint

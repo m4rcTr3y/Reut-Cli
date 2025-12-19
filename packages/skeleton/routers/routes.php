@@ -4,6 +4,7 @@ use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Reut\Auth\AuthRouter;
 use Reut\Router\DocsController;
+use Reut\Router\SchemaController;
 use Reut\Router\ReuteRoute;
 use Slim\App;
 
@@ -15,6 +16,11 @@ return function (App $app, array $config): void {
 
     if ((strtolower($_ENV['REUT_DOCS_ENABLED'] ?? 'true')) === 'true') {
         $app->get('/docs', [DocsController::class, 'index']);
+    }
+
+    // Schema viewer - disabled in production by default
+    if ((strtolower($_ENV['REUT_SCHEMA_ENABLED'] ?? 'true')) === 'true') {
+        $app->get('/schema', [SchemaController::class, 'index']);
     }
 
     $routes = ReuteRoute::use($app);
