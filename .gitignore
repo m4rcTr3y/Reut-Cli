@@ -30,6 +30,9 @@ Thumbs.db
 *.bak
 *.cache
 
+# Shell scripts (moved to local-docs)
+*.sh
+
 # Exclude older unversioned tests (keep only versioned tests in new-feature-tests/v1.0/)
 # Allow new-feature-tests directory and its contents
 !tests/new-feature-tests/

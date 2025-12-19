@@ -13,6 +13,13 @@ Built on Slim PHP for routing, REUT uses JWT (JSON Web Tokens) for secure authen
 - **Customizable Routes**: Add custom routes in the `routers` directory, with optional authentication middleware.
 - **Runtime API Docs**: Built-in `/docs` endpoint (HTML or JSON) lists every registered route and can be disabled via `REUT_DOCS_ENABLED=false`.
 - **Configurable Setup**: Set database connection details in `.env` or `config.php`.
+- **Advanced Migration System** (v1.3.0+):
+  - **Dry-run mode**: Preview migrations before executing (`--dry-run` flag)
+  - **Rollback support**: Rollback migrations by batch or specific migration
+  - **Migration validation**: Validate SQL syntax and detect conflicts before applying
+  - **Export/Import**: Export and import migration history for backup or sharing
+  - **Enhanced status**: JSON output, summary mode, and table-specific status checks
+  - **Protected columns**: Automatic protection of common columns (`created_at`, `updated_at`, etc.)
 
 ## Installation
 
@@ -70,7 +77,7 @@ If you see a stability error, install the development version:
 composer global require m4rc/reut_cli:dev-main
 ```
 
-> **Note:** Current version (`v1.2.2`). See [Packagist](https://packagist.org/packages/m4rc/reut_cli).
+> **Note:** Current version (`v1.3.0`). See [Packagist](https://packagist.org/packages/m4rc/reut_cli).
 
 ### Updating REUT CLI
 
@@ -130,15 +137,34 @@ Reut manage.php generate:model Users
 
 - **Project directory commands** (run inside your project folder):  
     ```bash
+    # Migration Commands
     Reut create                # Alias of migrate; ensures tables exist from models
     Reut migrate               # Apply migrations from model definitions to the database
+    Reut migrate --dry-run     # Preview migrations without executing (v1.3.0+)
     Reut sync                  # Reconcile existing tables with models (may drop extra columns)
+    Reut sync --dry-run        # Preview sync changes without executing (v1.3.0+)
     Reut status                # Check for pending migrations in models
+    Reut status --json         # Output migration status as JSON (v1.3.0+)
+    Reut status --summary      # Show summary of migration status (v1.3.0+)
+    Reut status --table=users  # Check status for specific table (v1.3.0+)
+    Reut rollback              # Rollback last batch of migrations (v1.3.0+)
+    Reut rollback --batch=2    # Rollback specific batch number (v1.3.0+)
+    Reut rollback --migration=name # Rollback specific migration (v1.3.0+)
+    Reut rollback --dry-run    # Preview rollback without executing (v1.3.0+)
+    Reut validate-migrations   # Validate migration SQL syntax and check conflicts (v1.3.0+)
+    Reut export-migrations     # Export migration history to JSON/SQL file (v1.3.0+)
+    Reut import-migrations file.json # Import migration history from JSON/SQL file (v1.3.0+)
+    
+    # Model & Route Generation
     Reut generate:routes       # Generate routes for each model into the route/ folder
     Reut generate:model Users  # Generate a model class (replace 'Users' with your model name)
+    
+    # Development & Inspection
     Reut dev --port=9000       # Start the built-in PHP dev server (host defaults to 0.0.0.0)
     Reut view --port=8088      # Start the HTML schema viewer (optional host/port flags)
     Reut inspect --table=users # Inspect DB schema and sync model definitions (use --all/--apply)
+    
+    # Utility
     Reut -v                    # Show CLI version
     Reut -h                    # Show help message
     ```
@@ -174,6 +200,59 @@ Reut manage.php generate:model Users
     $routes->get('/health', $healthHandler, 'Service healthcheck');
     ```
 - Generated routers already use `ReuteRoute`, so CRUD endpoints appear automatically. Custom routes simply adopt the helper to stay documented.
+
+### Migration Commands (v1.3.0+)
+
+REUT CLI provides comprehensive migration management:
+
+#### Basic Migration Commands
+
+- **`migrate`** / **`create`**: Apply migrations from models to database. Creates tables, adds columns, and respects protected columns.
+- **`sync`**: Aggressively reconcile database with models. Can drop columns and orphan tables (use with caution).
+- **`status`**: Check pending migrations without applying them. Supports `--json`, `--summary`, and `--table` options.
+
+#### Advanced Migration Features
+
+- **`rollback`**: Undo migrations
+  ```bash
+  Reut rollback              # Rollback last batch
+  Reut rollback --batch=2     # Rollback specific batch
+  Reut rollback --migration=create_users_table_20240101120000  # Rollback specific migration
+  Reut rollback --dry-run    # Preview rollback
+  ```
+
+- **`validate-migrations`**: Check migration SQL syntax and detect conflicts
+  ```bash
+  Reut validate-migrations
+  ```
+
+- **`export-migrations`**: Export migration history to JSON or SQL
+  ```bash
+  Reut export-migrations                    # Export to migrations.json
+  Reut export-migrations --format=sql      # Export to migrations.sql
+  ```
+
+- **`import-migrations`**: Import migration history from JSON or SQL file
+  ```bash
+  Reut import-migrations migrations.json
+  Reut import-migrations migrations.sql
+  ```
+
+- **Dry-run mode**: Preview changes before executing
+  ```bash
+  Reut migrate --dry-run     # Preview migrations
+  Reut sync --dry-run        # Preview sync changes
+  ```
+
+- **Enhanced status**: Get detailed migration information
+  ```bash
+  Reut status                # Standard output
+  Reut status --json         # JSON output for scripting
+  Reut status --summary      # Summary view
+  Reut status --table=users  # Check specific table
+  ```
+
+See [MIGRATION_COMMANDS.md](MIGRATION_COMMANDS.md) for detailed documentation on all migration commands.
 
 ### Built-in Authentication
 
