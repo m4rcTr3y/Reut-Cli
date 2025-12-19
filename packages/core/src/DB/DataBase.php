@@ -41,6 +41,7 @@ class DataBase
     public $fileFields;
     public array $fileFieldTypes = [];
     public bool $strictRequiredValidation = false;
+    public bool $requiresAuth = false;
 
     public array $columns = [];
     public array $protectedColumns = ['created_at', 'updated_at'];
@@ -49,7 +50,7 @@ class DataBase
     // Dangerous file extensions that should never be allowed
     private const DANGEROUS_EXTENSIONS = ['php', 'phtml', 'php3', 'php4', 'php5', 'phps', 'phar', 'exe', 'sh', 'bat', 'cmd', 'com', 'pif', 'scr', 'vbs', 'js', 'jsp', 'asp', 'aspx'];
 
-    public function __construct(array $config, $columns = [], ?String $tableName = null, Bool $hasRelationships = false, $relationships = 0, array $fileFields = [], array $disabledRoutes = [], array $protectedColumns = ['created_at', 'updated_at'], ?bool $strictRequiredValidation = null, array $fileFieldTypes = [])
+    public function __construct(array $config, $columns = [], ?String $tableName = null, Bool $hasRelationships = false, $relationships = 0, array $fileFields = [], array $disabledRoutes = [], array $protectedColumns = ['created_at', 'updated_at'], ?bool $strictRequiredValidation = null, array $fileFieldTypes = [], bool $requiresAuth = false)
     {
         $this->config = $config;
         $this->tableName = $tableName;
@@ -60,6 +61,7 @@ class DataBase
         $this->fileFields = $fileFields;
         $this->protectedColumns = $protectedColumns;
         $this->fileFieldTypes = $fileFieldTypes;
+        $this->requiresAuth = $requiresAuth;
         
         // Handle strictRequiredValidation: if null, read from env with default false
         $this->strictRequiredValidation = $strictRequiredValidation ?? 

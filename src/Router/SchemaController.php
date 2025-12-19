@@ -117,6 +117,10 @@ class SchemaController
         $hasDeletedAt = in_array('deleted_at', array_column($columns, 'name'));
         $hasTimestamps = in_array('created_at', array_column($columns, 'name')) && in_array('updated_at', array_column($columns, 'name'));
         
+        // Extract disabled routes and auth status
+        $disabledRoutes = $instance->disabledRoutes ?? [];
+        $requiresAuth = $instance->requiresAuth ?? false;
+        
         return [
             'class' => $className,
             'table' => $instance->tableName ?? pathinfo($filePath, PATHINFO_FILENAME),
@@ -126,6 +130,8 @@ class SchemaController
             'traits' => $traits,
             'hasDeletedAt' => $hasDeletedAt,
             'hasTimestamps' => $hasTimestamps,
+            'disabledRoutes' => $disabledRoutes,
+            'requiresAuth' => $requiresAuth,
             'filemtime' => $mtime,
             'modifiedAgo' => time() - $mtime
         ];
@@ -235,6 +241,13 @@ HTML;
                 }
                 if ($table['hasTimestamps']) {
                     $html .= '<span class="badge badge--info">Timestamps</span>';
+                }
+                if (isset($table['requiresAuth']) && $table['requiresAuth']) {
+                    $html .= '<span class="badge badge--purple">Auth Required</span>';
+                }
+                if (isset($table['disabledRoutes']) && !empty($table['disabledRoutes'])) {
+                    $disabledList = in_array('all', $table['disabledRoutes']) ? 'all' : implode(', ', $table['disabledRoutes']);
+                    $html .= '<span class="badge badge--warning">Disabled: ' . htmlspecialchars($disabledList) . '</span>';
                 }
                 if ($table['modifiedAgo'] < 3600) {
                     $ago = $table['modifiedAgo'] < 300 ? 'Just now' : round($table['modifiedAgo'] / 60) . 'm ago';

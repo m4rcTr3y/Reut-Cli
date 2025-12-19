@@ -60,10 +60,11 @@ class {$modelName}Table extends DataBase
         // - '{$modelName}': The table name
         // - hasRelationships: Automatically inferred when calling addForeignKey()
         // - []: File fields array (for file uploads, if any)
-        // - ['all']: Disabled routes array (routes to disable for this model)
+        // - ['all']: Disabled routes array (routes to disable for this model: 'all', 'find', 'add', 'update', 'delete')
         // - ['created_at', 'updated_at']: Protected columns (cannot be updated directly)
         // - null: strictRequiredValidation (null = use REUT_STRICT_REQUIRED_VALIDATION from .env)
         // - []: File field types (allowed file extensions per field, e.g., ['avatar' => ['jpg', 'png', 'gif']])
+        // - false: requiresAuth (set to true to enable authentication for all routes of this model)
         parent::__construct(
             \$config,
             [],
@@ -71,10 +72,11 @@ class {$modelName}Table extends DataBase
             false,
             [],
             [], // File fields array (e.g., ['avatar', 'document'])
-            ['all'], // Disabled routes
+            ['all'], // Disabled routes (e.g., ['all'] to disable all, or ['add', 'delete'] to disable specific routes)
             ['created_at', 'updated_at'], // Protected columns
             null, // strictRequiredValidation (null = use env var, true/false to override)
-            [] // File field types (e.g., ['avatar' => ['jpg', 'png', 'gif'], 'document' => ['pdf', 'docx']])
+            [], // File field types (e.g., ['avatar' => ['jpg', 'png', 'gif'], 'document' => ['pdf', 'docx']])
+            false // requiresAuth (set to true to require authentication for all routes)
         );
 
         // Define table columns with their properties

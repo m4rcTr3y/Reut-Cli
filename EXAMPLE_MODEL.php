@@ -26,7 +26,9 @@ class UsersTable extends DataBase
             false, // hasRelationships (will be true if addForeignKey is called)
             [], // relationships array
             ['avatar', 'resume'], // File fields - fields that accept file uploads
-            ['all'], // Disabled routes - routes to disable for this model
+            [], // Disabled routes - routes to disable for this model
+                  // Options: 'all' (disables all routes), 'find', 'add', 'update', 'delete'
+                  // Example: ['add', 'delete'] to disable only create and delete routes
             ['created_at', 'updated_at'], // Protected columns - cannot be updated directly
             null, // strictRequiredValidation - null = use REUT_STRICT_REQUIRED_VALIDATION from .env
                   // Set to true/false to override env setting for this model
@@ -34,7 +36,9 @@ class UsersTable extends DataBase
                 // File field types - allowed file extensions per field
                 'avatar' => ['jpg', 'jpeg', 'png', 'gif', 'webp'], // Only image files
                 'resume' => ['pdf', 'docx', 'txt'] // Only document files
-            ]
+            ],
+            true // requiresAuth - set to true to require authentication for all routes of this model
+                 // When true, all CRUD endpoints will require a valid JWT token
         );
 
         // Define table columns with their properties
@@ -157,5 +161,19 @@ class UsersTable extends DataBase
  * 5. CSRF Protection:
  *    - Configured via REUT_CSRF_ENABLED, REUT_CSRF_TOKEN_NAME, etc.
  *    - Applied globally via CsrfMiddleware for POST/PUT/PATCH/DELETE requests
+ * 
+ * 6. Disabled Routes:
+ *    - Control which CRUD routes are generated for this model
+ *    - Options: 'all' (disables all routes), 'find', 'add', 'update', 'delete'
+ *    - Example: ['add', 'delete'] disables only POST /add and DELETE /delete/{id}
+ *    - Example: ['all'] disables all CRUD routes (useful for read-only models)
+ *    - Disabled routes are shown in the schema viewer at /schema
+ * 
+ * 7. Per-Model Authentication:
+ *    - Set requiresAuth to true to require JWT authentication for all routes
+ *    - When enabled, all CRUD endpoints require a valid JWT token in the Authorization header
+ *    - Auth status is shown in the schema viewer at /schema
+ *    - Example: requiresAuth = true means all routes need authentication
+ *    - Example: requiresAuth = false means routes are publicly accessible (default)
  */
 

@@ -44,6 +44,27 @@ require_once __DIR__ . '/registerRoutes.php';
     $lowercase = strtolower($modelName);
      $routerFile = $routersDir . $modelName . 'Router.php';
     $classImport = "use Reut\\Models\\{$modelName}Table;";
+    
+    // Check if model requires auth by instantiating it temporarily
+    $requiresAuth = false;
+    $configPath = \Reut\Support\ProjectPath::resolve('config.php');
+    if (file_exists($configPath)) {
+        require $configPath;
+        if (isset($config)) {
+            try {
+                $modelClass = "Reut\\Models\\{$modelName}Table";
+                $tempInstance = new $modelClass($config);
+                $requiresAuth = $tempInstance->requiresAuth ?? false;
+            } catch (\Throwable $e) {
+                // If model can't be instantiated, default to false
+                $requiresAuth = false;
+            }
+        }
+    }
+    
+    $authClass = $requiresAuth ? 'Auth' : 'NoAuth';
+    $parentConstructor = $requiresAuth ? 'parent::__construct(\$app, \$config);' : 'parent::__construct(\$app);';
+    
              $template = <<<EOT
                         <?php
                         declare(strict_types=1);
@@ -52,69 +73,84 @@ require_once __DIR__ . '/registerRoutes.php';
                         use Slim\App;
                         use Psr\Http\Message\ResponseInterface as Response;
                         use Psr\Http\Message\ServerRequestInterface as Request;
-                        use Reut\Auth\NoAuth;
+                        use Reut\Auth\\{$authClass};
                         use Reut\Router\ReuteRoute;
 
                         //import the {$modelName} model here
                         
                         {$classImport}
 
-                        // NoAuth class implements endpoints without authentication, authenticaton can be changed using the Auth class
-                        class {$modelName}Router extends NoAuth {
+                        // {$authClass} class implements endpoints {$requiresAuth ? 'with' : 'without'} authentication
+                        class {$modelName}Router extends {$authClass} {
                             protected \$config;
                              public function __construct(App \$app,Array \$config){
                                 \$this->config = \$config;
-                                parent::__construct(\$app);
+                                {$parentConstructor}
                             
                             }
 
                             protected function genRoutes() {
                                 \$instance = new {$modelName}Table(\$this->config);
                                 \$router = ReuteRoute::use(\$this->app);
+                                
+                                // Get disabled routes from model instance
+                                \$disabledRoutes = \$instance->disabledRoutes ?? [];
+                                \$isAllDisabled = in_array('all', \$disabledRoutes);
 
-                                \$router->group('/{$lowercase}', '{$modelName}', function (ReuteRoute \$grouped) use (\$instance) {
+                                \$router->group('/{$lowercase}', '{$modelName}', function (ReuteRoute \$grouped) use (\$instance, \$disabledRoutes, \$isAllDisabled) {
 
                                     //get all {$modelName}s from table " http://endpoint/{$lowercase}/all
-                                    \$grouped->get('/all', function (Request \$request, Response \$response) use (\$instance) {
-                                        \$params = \$request->getQueryParams();
-                                        \$page = \$params['page'] ?? 1;
-                                        \$limit = \$params['limit'] ?? 20;
-                                        \$data = \$instance->findAll()->paginate((int)\$page, (int)\$limit);
-                                        \$response->getBody()->write(json_encode(\$data));
-                                        return \$response->withHeader('Content-Type', 'application/json');
-                                    }, 'List {$modelName} records with pagination');
+                                    if (!\$isAllDisabled && !in_array('all', \$disabledRoutes)) {
+                                        \$grouped->get('/all', function (Request \$request, Response \$response) use (\$instance) {
+                                            \$params = \$request->getQueryParams();
+                                            \$page = \$params['page'] ?? 1;
+                                            \$limit = \$params['limit'] ?? 20;
+                                            \$data = \$instance->findAll()->paginate((int)\$page, (int)\$limit);
+                                            \$response->getBody()->write(json_encode(\$data));
+                                            return \$response->withHeader('Content-Type', 'application/json');
+                                        }, 'List {$modelName} records with pagination');
+                                    }
 
                                     //Get single {$modelName} from the table " http://endpoint/{$lowercase}/find/{id}
-                                    \$grouped->get('/find/{id}',function (Request \$request, Response \$response, \$args) use (\$instance) {
-                                        \$id = \$args['id'];
-                                        \$data = \$instance->findOne(['id' => \$id]);
-                                        \$response->getBody()->write(json_encode(\$data->results));
-                                        return \$response->withHeader('Content-Type', 'application/json');
-                                    }, 'Find single {$modelName} by id');
-                                    \$grouped->post('/add', function (Request \$request, Response \$response) use (\$instance) {
-                                        \$input = \$request->getParsedBody();
-                                        \$result = \$instance->addOne(\$input);
-                                        \$response->getBody()->write(json_encode(['status' => \$result]));
-                                        return \$response->withHeader('Content-Type', 'application/json');
-                                    }, 'Create new {$modelName}');
+                                    if (!\$isAllDisabled && !in_array('find', \$disabledRoutes)) {
+                                        \$grouped->get('/find/{id}',function (Request \$request, Response \$response, \$args) use (\$instance) {
+                                            \$id = \$args['id'];
+                                            \$data = \$instance->findOne(['id' => \$id]);
+                                            \$response->getBody()->write(json_encode(\$data->results));
+                                            return \$response->withHeader('Content-Type', 'application/json');
+                                        }, 'Find single {$modelName} by id');
+                                    }
+                                    
+                                    //Create new {$modelName}
+                                    if (!\$isAllDisabled && !in_array('add', \$disabledRoutes)) {
+                                        \$grouped->post('/add', function (Request \$request, Response \$response) use (\$instance) {
+                                            \$input = \$request->getParsedBody();
+                                            \$result = \$instance->addOne(\$input);
+                                            \$response->getBody()->write(json_encode(['status' => \$result]));
+                                            return \$response->withHeader('Content-Type', 'application/json');
+                                        }, 'Create new {$modelName}');
+                                    }
 
                                     //Update single {$modelName} from the table " http://endpoint/{$lowercase}/update/id
-                                    \$grouped->put( '/update/{id}',function (Request \$request, Response \$response, \$args) use (\$instance) {
-                                        \$id = \$args['id'];
-                                        \$input = \$request->getParsedBody();
-                                        \$result = \$instance->update(\$input, ['id' => \$id]);
-                                        \$response->getBody()->write(json_encode(['status' => \$result]));
-                                        return \$response->withHeader('Content-Type', 'application/json');
-                                    }, 'Update {$modelName} by id');
+                                    if (!\$isAllDisabled && !in_array('update', \$disabledRoutes)) {
+                                        \$grouped->put( '/update/{id}',function (Request \$request, Response \$response, \$args) use (\$instance) {
+                                            \$id = \$args['id'];
+                                            \$input = \$request->getParsedBody();
+                                            \$result = \$instance->update(\$input, ['id' => \$id]);
+                                            \$response->getBody()->write(json_encode(['status' => \$result]));
+                                            return \$response->withHeader('Content-Type', 'application/json');
+                                        }, 'Update {$modelName} by id');
+                                    }
 
                                     //delete single {$modelName} from the table " http://endpoint/{$lowercase}/delete/id
-                                    \$grouped->delete('/delete/{id}', function (Request \$request, Response \$response,\$args) use (\$instance) {
-                                        \$id = \$args['id'];
-                                        \$result = \$instance->delete(['id' => \$id]);
-                                        \$response->getBody()->write(json_encode(['status' => \$result]));
-                                        return \$response->withHeader('Content-Type', 'application/json');
-                                    }, 'Delete {$modelName} by id');
-
+                                    if (!\$isAllDisabled && !in_array('delete', \$disabledRoutes)) {
+                                        \$grouped->delete('/delete/{id}', function (Request \$request, Response \$response,\$args) use (\$instance) {
+                                            \$id = \$args['id'];
+                                            \$result = \$instance->delete(['id' => \$id]);
+                                            \$response->getBody()->write(json_encode(['status' => \$result]));
+                                            return \$response->withHeader('Content-Type', 'application/json');
+                                        }, 'Delete {$modelName} by id');
+                                    }
 
                                 });
                             }

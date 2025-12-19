@@ -338,6 +338,58 @@ See [MIGRATION_COMMANDS.md](MIGRATION_COMMANDS.md) for detailed documentation on
     ```
 - Each call automatically marks the table as relational and contributes to the relationship count so migrations know to create parent tables first.
 
+### Disabled Routes
+
+- Control which CRUD routes are generated for each model using the `disabledRoutes` array in the model constructor:
+    ```php
+    parent::__construct(
+        $config,
+        [],
+        'Users',
+        false,
+        [],
+        [], // File fields
+        ['add', 'delete'], // Disabled routes: 'all', 'find', 'add', 'update', 'delete'
+        ['created_at', 'updated_at'], // Protected columns
+        null, // strictRequiredValidation
+        [], // File field types
+        false // requiresAuth
+    );
+    ```
+- Route options:
+  - `'all'` - Disables all CRUD routes (useful for read-only models)
+  - `'find'` - Disables `GET /{model}/find/{id}`
+  - `'add'` - Disables `POST /{model}/add`
+  - `'update'` - Disables `PUT /{model}/update/{id}`
+  - `'delete'` - Disables `DELETE /{model}/delete/{id}`
+- Disabled routes are automatically excluded from route generation and shown in the schema viewer at `/schema`.
+
+### Per-Model Authentication
+
+- Enable authentication for specific models by setting `requiresAuth` to `true` in the model constructor:
+    ```php
+    parent::__construct(
+        $config,
+        [],
+        'Users',
+        false,
+        [],
+        [], // File fields
+        [], // Disabled routes
+        ['created_at', 'updated_at'], // Protected columns
+        null, // strictRequiredValidation
+        [], // File field types
+        true // requiresAuth - enables JWT authentication for all routes
+    );
+    ```
+- When `requiresAuth` is `true`:
+  - All CRUD endpoints for that model require a valid JWT token
+  - The `Authorization: Bearer <token>` header must be included in requests
+  - Auth status is displayed in the schema viewer at `/schema`
+- When `requiresAuth` is `false` (default):
+  - Routes are publicly accessible without authentication
+- This allows fine-grained control: some models can be public while others require authentication.
+
 - The viewer command copies the `/viewer` folder into new projects and serves it with the built-in PHP server so you can inspect tables visually.
 - Use `Reut dev --port=9000 --host=0.0.0.0` (or `php manage.php dev`) to spin up a PHP dev server with the bundled router that falls back to `index.php`.
 
