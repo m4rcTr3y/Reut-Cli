@@ -1,42 +1,20 @@
 {
-    "name": "m4rc/reut_cli",
-    "description": "REUT CLI Tool - A lightweight PHP framework with model-based database management",
+    "name": "reut/core",
+    "description": "Internal core package for the REUT framework.",
     "type": "library",
+    "license": "MIT",
     "autoload": {
         "psr-4": {
-            "M4rc\\ReutCli\\": "src/"
+            "Reut\\": "src/"
         }
     },
-    "license": "MIT",
-    "authors": [
-        {
-            "name": "m4rcTr3y",
-            "email": "marctrevis61@proton.me"
-        }
-    ],
-    "bin": [
-        "bin/Reut",
-        "bin/Reut.bat"
-    ],
     "require": {
         "php": ">=7.4",
-        "reut/core": "^1.1"
-    },
-    "require-dev": {
-        "phpunit/phpunit": "^10.0"
-    },
-    "autoload-dev": {
-        "psr-4": {
-            "Tests\\": "tests/"
-        }
-    },
-    "keywords": ["framework", "cli", "php", "database", "migrations", "orm"],
-    "homepage": "https://github.com/m4rcTr3y/Reut-Cli",
-    "support": {
-        "email": "marctrevis61@proton.me",
-        "issues": "https://github.com/m4rcTr3y/Reut-Cli/issues"
-    },
-    "config": {
-        "bin-dir": "bin"
+        "slim/slim": "^4.13",
+        "slim/psr7": "^1.7",
+        "firebase/php-jwt": "^6.10",
+        "vlucas/phpdotenv": "^5.6",
+        "phpoffice/phpspreadsheet": "^2.2"
     }
 }
+
