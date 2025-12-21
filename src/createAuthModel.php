@@ -1,8 +1,6 @@
 <?php
 declare(strict_types=1);
 
-use Reut\Support\ProjectPath;
-
 /**
  * Generate authentication model (UsersTable) with proper column definitions
  * 
@@ -13,7 +11,9 @@ use Reut\Support\ProjectPath;
  */
 function createAuthModel(string $tableName, string $identifierField = 'email', bool $force = false): bool
 {
-    $modelsDir = rtrim(ProjectPath::resolve('models'), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+    // Resolve models directory (works during init when we're already in project directory)
+    $projectRoot = defined('REUT_PROJECT_ROOT') ? REUT_PROJECT_ROOT : getcwd();
+    $modelsDir = rtrim($projectRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'models' . DIRECTORY_SEPARATOR;
     
     // Ensure models directory exists
     if (!is_dir($modelsDir)) {
