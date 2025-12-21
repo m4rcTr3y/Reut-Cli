@@ -1,17 +1,16 @@
 <?php
 declare(strict_types=1);
 
-use Reut\Support\ProjectPath;
-
 /**
  * dev.php
  * Spins up the built-in PHP server for API development.
  * Usage: php manage.php dev [--host=0.0.0.0] [--port=9000] [--docroot=.]
  */
-$projectRoot = ProjectPath::root();
+// Resolve project root (works when called from manage.php which sets REUT_PROJECT_ROOT)
+$projectRoot = defined('REUT_PROJECT_ROOT') ? REUT_PROJECT_ROOT : getcwd();
 $docRoot = $projectRoot; // Serve the project root by default
-$routerDir = ProjectPath::resolve('devserver');
-$routerFile = $routerDir . '/router.php';
+$routerDir = rtrim($projectRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'devserver';
+$routerFile = $routerDir . DIRECTORY_SEPARATOR . 'router.php';
 
 ensureDevAssets($routerDir, $routerFile);
 
