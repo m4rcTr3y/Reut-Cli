@@ -372,11 +372,16 @@ if (!file_exists(\$autoload)) {
     exit(1);
 }
 require \$autoload;
-use Reut\DB\DatabaseCreator;
-if (!class_exists(DatabaseCreator::class)) {
+
+// Check if reut/core is installed by checking for DatabaseCreator class
+// Use a more lenient check - try to use the class and catch if it doesn't exist
+if (!class_exists('Reut\\\\DB\\\\DatabaseCreator')) {
     fwrite(STDERR, "Composer dependencies missing. Run `composer install` to install reut/core.\\n");
+    fwrite(STDERR, "If you just ran composer install, try running the command again.\\n");
     exit(1);
 }
+
+use Reut\DB\DatabaseCreator;
 DatabaseCreator::Generate();
 PHP;
     file_put_contents('manage.php', $manageContent);
