@@ -51,6 +51,17 @@ Tests are organized by version to track when features were introduced:
   - Proper Timestamp column definitions
   - Uses test database: `test_db_v14` (root/root@1234)
 
+- **CliCommandTest.php** - Tests for CLI command functionality (v1.4):
+  - CLI version command (v1.4.0)
+  - CORS middleware integration in generated projects
+  - CORS configuration in `.env` file
+  - Auth configuration file generation
+  - Automatic UsersTable model generation
+  - Test user credential storage
+  - Post-migration user creation via migrate command
+  - CORS middleware ordering
+  - Uses test database: `test_db_v14_cli` (root/root@1234)
+
 ## Running Tests
 
 Run all new feature tests:

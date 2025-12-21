@@ -68,7 +68,7 @@ switch ($command) {
         break;
     case '-v':
     case 'version':
-        echo "Reut CLI v1.3.7" . PHP_EOL;
+        echo "Reut CLI v1.4.0" . PHP_EOL;
         exit(0);
     case 'update':
         updateCommand();
@@ -108,7 +108,7 @@ switch ($command) {
     case '-h':
     case 'help':
     default:
-        echo "Reut CLI Tool v1.3.7" . PHP_EOL;
+        echo "Reut CLI Tool v1.4.0" . PHP_EOL;
         echo "Usage: Reut <command> or php manage.php <command>" . PHP_EOL;
         echo "Commands:" . PHP_EOL;
         echo "  init              - Initialize a new REUT project" . PHP_EOL;
@@ -414,7 +414,8 @@ PHP;
         if ($testUserIdentifier) {
             echo '- After migration, test user will be created automatically.' . PHP_EOL;
             echo '- You can then login at POST /auth/login with:' . PHP_EOL;
-            echo "  - {$authConfig['fields']['identifier'] ?? 'email'}: {$testUserIdentifier}" . PHP_EOL;
+            $identifierField = isset($authConfig['fields']['identifier']) ? $authConfig['fields']['identifier'] : 'email';
+            echo "  - {$identifierField}: {$testUserIdentifier}" . PHP_EOL;
         } else {
             echo '- Create a user via POST /auth/register or run migrations and use the setup prompt.' . PHP_EOL;
         }

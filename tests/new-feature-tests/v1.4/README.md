@@ -27,9 +27,10 @@ This test suite covers the new authentication setup enhancement features impleme
    - Proper model file loading and instantiation
    - Auto-creation uses correct updated_at definition
 
-## Test Database
+## Test Databases
 
-- **Database**: `test_db_v14`
+- **AuthSetupEnhancementTest**: `test_db_v14`
+- **CliCommandTest**: `test_db_v14_cli`
 - **Username**: `root`
 - **Password**: `root@1234`
 - **Host**: `localhost`
@@ -46,9 +47,15 @@ Run with testdox output:
 php vendor/bin/phpunit tests/new-feature-tests/v1.4/ --testdox
 ```
 
+Run a specific test file:
+```bash
+php vendor/bin/phpunit tests/new-feature-tests/v1.4/AuthSetupEnhancementTest.php
+php vendor/bin/phpunit tests/new-feature-tests/v1.4/CliCommandTest.php
+```
+
 Run a specific test:
 ```bash
-php vendor/bin/phpunit tests/new-feature-tests/v1.4/AuthSetupEnhancementTest.php --filter testName
+php vendor/bin/phpunit tests/new-feature-tests/v1.4/ --filter testName
 ```
 
 ## Test Cases
@@ -95,6 +102,44 @@ php vendor/bin/phpunit tests/new-feature-tests/v1.4/AuthSetupEnhancementTest.php
 ### 10. `testAuthModelGenerationRespectsExistingFiles`
 - Tests that existing model files are not overwritten
 - Validates file protection
+
+## CLI Command Tests
+
+The `CliCommandTest.php` file tests the CLI command functionality for v1.4:
+
+### 1. `testCliVersionCommand`
+- Verifies CLI version command shows v1.4.0
+
+### 2. `testGeneratedIndexIncludesCorsMiddleware`
+- Tests that generated `index.php` includes `CorsMiddleware` import and instantiation
+- Verifies CORS middleware is added before other security middlewares
+
+### 3. `testEnvFileIncludesCorsConfig`
+- Tests that `.env` file includes all CORS configuration variables
+- Verifies default CORS settings are present
+
+### 4. `testAuthConfigFileGenerated`
+- Tests that `auth.php` is generated when auth is enabled
+- Verifies auth configuration structure
+
+### 5. `testUsersTableModelGenerated`
+- Tests that `UsersTable` model is automatically generated
+- Verifies model structure and correct `updated_at` definition
+
+### 6. `testAuthSetupJsonCreated`
+- Tests that `.auth-setup.json` is created with test user credentials
+- Validates JSON structure
+
+### 7. `testMigrateCreatesTestUser`
+- Tests that `migrate` command creates test user after migrations
+- Verifies user exists in database with correct password hash
+- Confirms `.auth-setup.json` is deleted after user creation
+
+### 8. `testCorsMiddlewareOrder`
+- Tests that CORS middleware is added in correct order (before rate limit and CSRF)
+
+### 9. `testCorsMiddlewareFileExists`
+- Verifies that CorsMiddleware is referenced in generated project
 
 ## Important Notes
 
