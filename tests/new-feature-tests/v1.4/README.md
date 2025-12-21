@@ -27,10 +27,17 @@ This test suite covers the new authentication setup enhancement features impleme
    - Proper model file loading and instantiation
    - Auto-creation uses correct updated_at definition
 
+## Test Files
+
+- **AuthSetupEnhancementTest.php**: Tests for authentication setup enhancements
+- **CliCommandTest.php**: Tests for CLI command functionality
+- **ProjectScaffoldingAndCommandsTest.php**: Comprehensive tests for project scaffolding and CLI command execution
+
 ## Test Databases
 
 - **AuthSetupEnhancementTest**: `test_db_v14`
 - **CliCommandTest**: `test_db_v14_cli`
+- **ProjectScaffoldingAndCommandsTest**: `test_db_v14_scaffold`
 - **Username**: `root`
 - **Password**: `root@1234`
 - **Host**: `localhost`
@@ -51,6 +58,7 @@ Run a specific test file:
 ```bash
 php vendor/bin/phpunit tests/new-feature-tests/v1.4/AuthSetupEnhancementTest.php
 php vendor/bin/phpunit tests/new-feature-tests/v1.4/CliCommandTest.php
+php vendor/bin/phpunit tests/new-feature-tests/v1.4/ProjectScaffoldingAndCommandsTest.php
 ```
 
 Run a specific test:
@@ -140,6 +148,61 @@ The `CliCommandTest.php` file tests the CLI command functionality for v1.4:
 
 ### 9. `testCorsMiddlewareFileExists`
 - Verifies that CorsMiddleware is referenced in generated project
+
+## Project Scaffolding and Commands Tests
+
+The `ProjectScaffoldingAndCommandsTest.php` file provides comprehensive tests for project scaffolding and CLI command execution:
+
+### 1. `testProjectScaffoldingCreatesFiles`
+- Verifies all essential files are created during initialization
+- Checks for manage.php, composer.json, .env, config.php, index.php, auth.php
+- Verifies directories (models, devserver, viewer) are created
+
+### 2. `testComposerJsonIncludesReutCore`
+- Tests that composer.json includes reut/core dependency
+- Verifies dependency version is specified
+
+### 3. `testManagePhpCreationAndExecution`
+- Tests manage.php file creation and content
+- Verifies manage.php can be executed without fatal errors
+- Checks for proper DatabaseCreator usage
+
+### 4. `testDevCommandExecution`
+- Tests dev command execution after composer install
+- Verifies no ProjectPath class errors (v1.4 fix)
+- Ensures dependencies are properly loaded
+
+### 5. `testMigrateCommandExecution`
+- Tests migrate command works after scaffolding
+- Verifies no fatal or class errors
+
+### 6. `testViewCommandExecution`
+- Tests view command execution
+- Verifies no ProjectPath class errors (v1.4 fix)
+
+### 7. `testCommandsFailGracefullyWithoutDependencies`
+- Tests error handling when dependencies are missing
+- Verifies helpful error messages
+
+### 8. `testEnvFileConfiguration`
+- Tests .env file contains correct configuration
+- Verifies database and CORS configuration (v1.4 features)
+
+### 9. `testConfigPhpCreation`
+- Tests config.php file creation
+- Verifies REUT_PROJECT_ROOT definition and Dotenv usage
+
+### 10. `testAuthPhpCreation`
+- Tests auth.php file creation
+- Verifies safe vendor/autoload.php check (v1.4 fix)
+
+### 11. `testIndexPhpCreation`
+- Tests index.php file creation
+- Verifies Slim App and CorsMiddleware usage (v1.4)
+
+### 12. `testUsersTableModelGeneration`
+- Tests UsersTable model generation when auth is enabled
+- Verifies proper column definitions and Timestamp usage
 
 ## Important Notes
 
