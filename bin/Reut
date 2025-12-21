@@ -468,28 +468,37 @@ function updateCommand(): void
     $currentVersion = "1.4.0";
     echo "Current version: v{$currentVersion}" . PHP_EOL;
     
-    // Clear composer cache for reut packages (cross-platform)
-    echo "Clearing composer cache..." . PHP_EOL;
-    $cacheDir = getComposerCacheDir();
-    if ($cacheDir && is_dir($cacheDir)) {
-        $cacheFiles = glob($cacheDir . DIRECTORY_SEPARATOR . '*reut*');
-        $cacheFiles = array_merge($cacheFiles, glob($cacheDir . DIRECTORY_SEPARATOR . '*Reut*'));
-        foreach ($cacheFiles as $file) {
-            if (is_dir($file)) {
-                // Remove directory recursively
-                if (PHP_OS_FAMILY === 'Windows') {
-                    exec('rmdir /s /q ' . escapeshellarg($file));
-                } else {
-                    exec('rm -rf ' . escapeshellarg($file));
+    // Clear composer cache completely to avoid tag caching issues
+    echo PHP_EOL . "Clearing composer cache..." . PHP_EOL;
+    $clearCacheCmd = 'composer clear-cache 2>&1';
+    passthru($clearCacheCmd, $clearCacheExitCode);
+    
+    if ($clearCacheExitCode !== 0) {
+        echo "Warning: composer clear-cache failed, trying alternative method..." . PHP_EOL;
+        // Try alternative: clear cache directory manually
+        $cacheDir = getComposerCacheDir();
+        if ($cacheDir && is_dir($cacheDir)) {
+            $cacheFiles = glob($cacheDir . DIRECTORY_SEPARATOR . '*reut*');
+            $cacheFiles = array_merge($cacheFiles, glob($cacheDir . DIRECTORY_SEPARATOR . '*Reut*'));
+            foreach ($cacheFiles as $file) {
+                if (is_dir($file)) {
+                    // Remove directory recursively
+                    if (PHP_OS_FAMILY === 'Windows') {
+                        exec('rmdir /s /q ' . escapeshellarg($file) . ' 2>&1');
+                    } else {
+                        exec('rm -rf ' . escapeshellarg($file) . ' 2>&1');
+                    }
+                    echo "  Cleared: " . basename($file) . PHP_EOL;
                 }
-                echo "  Cleared: " . basename($file) . PHP_EOL;
             }
         }
+    } else {
+        echo "Composer cache cleared successfully." . PHP_EOL;
     }
     
-    // Run composer global update
-    echo PHP_EOL . "Running composer global update..." . PHP_EOL;
-    $cmd = 'composer global update m4rc/reut_cli --no-cache 2>&1';
+    // Run composer global update with --no-cache and --prefer-dist for fresh download
+    echo PHP_EOL . "Running composer global update (this may take a moment)..." . PHP_EOL;
+    $cmd = 'composer global update m4rc/reut_cli --no-cache --prefer-dist 2>&1';
     passthru($cmd, $exitCode);
     
     if ($exitCode === 0) {
@@ -505,10 +514,21 @@ function updateCommand(): void
             passthru('"' . $binaryPath . '" -v');
         } else {
             echo "Note: 'Reut' command not found in PATH. See PATH setup instructions above." . PHP_EOL;
+            // Try to find it anyway
+            $composerBinPath = getComposerBinPath();
+            if ($composerBinPath) {
+                $reutBinary = $composerBinPath . '/Reut';
+                if (file_exists($reutBinary)) {
+                    echo "Found at: {$reutBinary}" . PHP_EOL;
+                    passthru('"' . $reutBinary . '" -v');
+                }
+            }
         }
     } else {
         echo PHP_EOL . "[ERROR] Update failed with exit code: {$exitCode}" . PHP_EOL;
-        echo "Try running manually: composer global update m4rc/reut_cli" . PHP_EOL;
+        echo "Try running manually:" . PHP_EOL;
+        echo "  composer clear-cache" . PHP_EOL;
+        echo "  composer global update m4rc/reut_cli --no-cache" . PHP_EOL;
         exit(1);
     }
 }
