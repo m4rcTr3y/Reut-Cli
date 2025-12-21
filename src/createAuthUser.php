@@ -2,7 +2,6 @@
 declare(strict_types=1);
 
 use Reut\DB\DataBase;
-use Reut\Support\ProjectPath;
 
 /**
  * Create a test user in the authentication table
@@ -25,7 +24,9 @@ function createAuthUser(string $identifier, string $password, array $config, arr
         $modelClass = "Reut\\Models\\{$tableName}Table";
         if (!class_exists($modelClass)) {
             // Try to require the model file
-            $modelsDir = rtrim(ProjectPath::resolve('models'), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+            // Resolve models directory (works when called from migrate.php which sets REUT_PROJECT_ROOT)
+            $projectRoot = defined('REUT_PROJECT_ROOT') ? REUT_PROJECT_ROOT : getcwd();
+            $modelsDir = rtrim($projectRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'models' . DIRECTORY_SEPARATOR;
             $modelFile = $modelsDir . $tableName . 'Table.php';
             if (file_exists($modelFile)) {
                 require_once $modelFile;
