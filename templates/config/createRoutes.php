@@ -66,6 +66,7 @@ require_once __DIR__.'/registerRoutes.php';
                         use Psr\Http\Message\ServerRequestInterface as Request;
                         use Reut\Auth\NoAuth;
                         use Reut\Router\ReuteRoute;
+                        use Reut\Query\ReutQueries;
 
                         //import the {$modelName} model here
                         
@@ -83,49 +84,61 @@ require_once __DIR__.'/registerRoutes.php';
                             protected function genRoutes() {
                                 \$instance = new {$modelName}Table(\$this->config);
                                 \$router = ReuteRoute::use(\$this->app);
+                                
+                                // Get disabled routes from model instance
+                                \$disabledRoutes = \$instance->disabledRoutes ?? [];
+                                \$isAllDisabled = in_array('all', \$disabledRoutes);
 
-                                \$router->group('/{$lowercase}', '{$modelName}', function (ReuteRoute \$grouped) use (\$instance) {
+                                \$router->group('/{$lowercase}', '{$modelName}', function (ReuteRoute \$grouped) use (\$instance, \$disabledRoutes, \$isAllDisabled) {
 
                                     //get all {$modelName}s from table " http://endpoint/{$lowercase}/all
-                                    \$grouped->get('/all', function (Request \$request, Response \$response) use (\$instance) {
-                                        \$params = \$request->getQueryParams();
-                                        \$page = \$params['page'] ?? 1;
-                                        \$limit = \$params['limit'] ?? 20;
-                                        \$data = \$instance->findAll()->paginate((int)\$page, (int)\$limit);
-                                        \$response->getBody()->write(json_encode(\$data));
-                                        return \$response->withHeader('Content-Type', 'application/json');
-                                    }, 'List {$modelName} records with pagination');
+                                    if (!\$isAllDisabled && !in_array('all', \$disabledRoutes)) {
+                                        \$grouped->get('/all', function (Request \$request, Response \$response) use (\$instance) {
+                                            \$params = \$request->getQueryParams();
+                                            \$page = \$params['page'] ?? 1;
+                                            \$limit = \$params['limit'] ?? 20;
+                                            \$data = ReutQueries::handleFindAll(\$instance, \$request)->paginate((int)\$page, (int)\$limit);
+                                            \$response->getBody()->write(json_encode(\$data));
+                                            return \$response->withHeader('Content-Type', 'application/json');
+                                        }, 'List {$modelName} records with pagination');
+                                    }
 
                                     //Get single {$modelName} from the table " http://endpoint/{$lowercase}/find/{id}
-                                    \$grouped->get('/find/{id}',function (Request \$request, Response \$response, \$args) use (\$instance) {
-                                        \$id = \$args['id'];
-                                        \$data = \$instance->findOne(['id' => \$id]);
-                                        \$response->getBody()->write(json_encode(\$data->results));
-                                        return \$response->withHeader('Content-Type', 'application/json');
-                                    }, 'Find single {$modelName} by id');
-                                    \$grouped->post('/add', function (Request \$request, Response \$response) use (\$instance) {
-                                        \$input = \$request->getParsedBody();
-                                        \$result = \$instance->addOne(\$input);
-                                        \$response->getBody()->write(json_encode(['status' => \$result]));
-                                        return \$response->withHeader('Content-Type', 'application/json');
-                                    }, 'Create new {$modelName}');
+                                    if (!\$isAllDisabled && !in_array('find', \$disabledRoutes)) {
+                                        \$grouped->get('/find/{id}',function (Request \$request, Response \$response, \$args) use (\$instance) {
+                                            \$id = \$args['id'];
+                                            \$data = ReutQueries::handleFindOne(\$instance, \$id, \$request);
+                                            \$response->getBody()->write(json_encode(\$data->results));
+                                            return \$response->withHeader('Content-Type', 'application/json');
+                                        }, 'Find single {$modelName} by id');
+                                    }
+                                    
+                                    //Create new {$modelName}
+                                    if (!\$isAllDisabled && !in_array('add', \$disabledRoutes)) {
+                                        \$grouped->post('/add', function (Request \$request, Response \$response) use (\$instance) {
+                                            \$input = \$request->getParsedBody();
+                                            \$result = \$instance->addOne(\$input);
+                                            \$response->getBody()->write(json_encode(['status' => \$result]));
+                                            return \$response->withHeader('Content-Type', 'application/json');
+                                        }, 'Create new {$modelName}');
+                                    }
 
                                     //Update single {$modelName} from the table " http://endpoint/{$lowercase}/update/id
-                                    \$grouped->put( '/update/{id}',function (Request \$request, Response \$response, \$args) use (\$instance) {
-                                        \$id = \$args['id'];
-                                        \$input = \$request->getParsedBody();
-                                        \$result = \$instance->update(\$input, ['id' => \$id]);
-                                        \$response->getBody()->write(json_encode(['status' => \$result]));
-                                        return \$response->withHeader('Content-Type', 'application/json');
-                                    }, 'Update {$modelName} by id');
+                                    if (!\$isAllDisabled && !in_array('update', \$disabledRoutes)) {
+                                        \$grouped->put( '/update/{id}',function (Request \$request, Response \$response, \$args) use (\$instance) {
+                                            \$id = \$args['id'];
+                                            \$input = \$request->getParsedBody();
+                                            return ReutQueries::handleUpdate(\$instance, \$id, \$input, \$request, \$response);
+                                        }, 'Update {$modelName} by id');
+                                    }
 
                                     //delete single {$modelName} from the table " http://endpoint/{$lowercase}/delete/id
-                                    \$grouped->delete('/delete/{id}', function (Request \$request, Response \$response,\$args) use (\$instance) {
-                                        \$id = \$args['id'];
-                                        \$result = \$instance->delete(['id' => \$id]);
-                                        \$response->getBody()->write(json_encode(['status' => \$result]));
-                                        return \$response->withHeader('Content-Type', 'application/json');
-                                    }, 'Delete {$modelName} by id');
+                                    if (!\$isAllDisabled && !in_array('delete', \$disabledRoutes)) {
+                                        \$grouped->delete('/delete/{id}', function (Request \$request, Response \$response,\$args) use (\$instance) {
+                                            \$id = \$args['id'];
+                                            return ReutQueries::handleDelete(\$instance, \$id, \$request, \$response);
+                                        }, 'Delete {$modelName} by id');
+                                    }
 
 
                                 });
