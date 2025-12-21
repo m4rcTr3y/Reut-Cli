@@ -20,10 +20,12 @@ use Dotenv\Dotenv;
 
 // this is the config required for the database connection
 \$config = [
-    'host' => 'localhost',
+    'driver' => \$_ENV['DB_TYPE'] ?? 'mysql',
+    'host' => \$_ENV['DB_HOST'] ?? 'localhost',
     'username' => \$_ENV['DB_USERNAME'],
     'password' => \$_ENV['DB_PASSWORD'],
-    'dbname' =>  \$_ENV['DB_NAME']
+    'dbname' => \$_ENV['DB_NAME'],
+    'port' => \$_ENV['DB_PORT'] ?? null,
 ];
 
 PHP;

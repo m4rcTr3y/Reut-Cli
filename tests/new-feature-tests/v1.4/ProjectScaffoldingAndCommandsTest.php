@@ -153,7 +153,15 @@ class ProjectScaffoldingAndCommandsTest extends TestCase
         
         // Install dependencies
         chdir($projectPath);
-        $this->runCommand('composer install --no-interaction --quiet 2>&1', $projectPath);
+        $installOutput = $this->runCommand('composer install --no-interaction 2>&1', $projectPath);
+        
+        // Verify composer install succeeded
+        $this->assertStringNotContainsString('error', strtolower($installOutput), 
+            'Composer install should succeed. Output: ' . substr($installOutput, 0, 200));
+        
+        // Verify vendor/autoload.php exists
+        $this->assertFileExists($projectPath . '/vendor/autoload.php', 
+            'vendor/autoload.php should exist after composer install');
         
         // Check dev command can be called (will fail because server can't start in test, but should not have class errors)
         $output = $this->runCommand('timeout 2 php manage.php dev 2>&1 || true', $projectPath);
@@ -161,8 +169,17 @@ class ProjectScaffoldingAndCommandsTest extends TestCase
         // Should not have class not found errors
         $this->assertStringNotContainsString('Class "Reut\\Support\\ProjectPath" not found', $output, 
             'dev command should not have ProjectPath class error');
-        $this->assertStringNotContainsString('Composer dependencies missing', $output, 
-            'dev command should not have dependency errors after composer install');
+        
+        // Verify dev command initialized properly - should show server starting message or address
+        $this->assertTrue(
+            strpos($output, 'dev server') !== false || 
+            strpos($output, 'Starting') !== false ||
+            strpos($output, 'http://') !== false ||
+            strpos($output, '0.0.0.0') !== false ||
+            strpos($output, '9000') !== false ||
+            strpos($output, 'REUT') !== false,
+            'Dev command should initialize server. Output: ' . substr($output, 0, 300)
+        );
     }
 
     /**
@@ -183,6 +200,24 @@ class ProjectScaffoldingAndCommandsTest extends TestCase
         // Should not have fatal errors
         $this->assertStringNotContainsString('Fatal error', $output, 'migrate command should not have fatal errors');
         $this->assertStringNotContainsString('Class not found', $output, 'migrate command should not have class errors');
+        
+        // Verify migration actually ran - check for migration table or success message
+        $this->assertTrue(
+            strpos($output, 'migration') !== false || 
+            strpos($output, 'Migration') !== false ||
+            strpos($output, 'success') !== false ||
+            strpos($output, 'applied') !== false,
+            'Migrate command should show migration activity. Output: ' . substr($output, 0, 300)
+        );
+        
+        // Verify migrations table was created in database
+        $dsn = "mysql:host=" . self::DB_HOST . ";dbname=" . self::DB_NAME . ";charset=utf8mb4";
+        $pdo = new PDO($dsn, self::DB_USER, self::DB_PASS);
+        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        
+        // Check if migrations table exists
+        $tables = $pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
+        $this->assertContains('migrations', $tables, 'Migrations table should be created');
     }
 
     /**
@@ -203,6 +238,17 @@ class ProjectScaffoldingAndCommandsTest extends TestCase
         // Should not have class not found errors
         $this->assertStringNotContainsString('Class "Reut\\Support\\ProjectPath" not found', $output, 
             'view command should not have ProjectPath class error');
+        
+        // Verify view command initialized properly - should show viewer starting message
+        $this->assertTrue(
+            strpos($output, 'viewer') !== false || 
+            strpos($output, 'Viewer') !== false ||
+            strpos($output, 'Schema') !== false ||
+            strpos($output, 'http://') !== false ||
+            strpos($output, '127.0.0.1') !== false ||
+            strpos($output, '8080') !== false,
+            'View command should initialize viewer. Output: ' . substr($output, 0, 300)
+        );
     }
 
     /**
@@ -234,10 +280,11 @@ class ProjectScaffoldingAndCommandsTest extends TestCase
         
         $envContent = file_get_contents($projectPath . '/.env');
         
-        // Check for database configuration
-        $this->assertStringContainsString('DB_HOST', $envContent, '.env should contain DB_HOST');
+        // Check for database configuration (uses DB_TYPE, DB_USERNAME, DB_PASSWORD, DB_NAME)
+        $this->assertStringContainsString('DB_TYPE', $envContent, '.env should contain DB_TYPE');
         $this->assertStringContainsString('DB_NAME', $envContent, '.env should contain DB_NAME');
-        $this->assertStringContainsString('DB_USER', $envContent, '.env should contain DB_USER');
+        $this->assertStringContainsString('DB_USERNAME', $envContent, '.env should contain DB_USERNAME');
+        $this->assertStringContainsString('DB_PASSWORD', $envContent, '.env should contain DB_PASSWORD');
         
         // Check for CORS configuration (v1.4 feature)
         $this->assertStringContainsString('REUT_CORS_ENABLED', $envContent, '.env should contain CORS config');
@@ -289,7 +336,7 @@ class ProjectScaffoldingAndCommandsTest extends TestCase
         $indexContent = file_get_contents($projectPath . '/index.php');
         
         // Check for essential components
-        $this->assertStringContainsString('Slim\\App', $indexContent, 'index.php should use Slim App');
+        $this->assertStringContainsString('AppFactory', $indexContent, 'index.php should use AppFactory');
         $this->assertStringContainsString('CorsMiddleware', $indexContent, 'index.php should use CorsMiddleware (v1.4)');
     }
 
