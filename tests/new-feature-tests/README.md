@@ -7,6 +7,10 @@ This directory contains tests for new security features and project scaffolding 
 Tests are organized by version to track when features were introduced:
 
 - **v1.0/** - Initial security features and scaffolding tests (December 2024)
+- **v1.1/** - Migration fixes and improvements
+- **v1.2/** - CLI commands and migration features
+- **v1.3/** - Disabled routes and per-model authentication
+- **v1.4/** - Auth setup enhancement (automatic model generation, test user creation, bug fixes)
 
 ## Test Files
 
@@ -35,6 +39,17 @@ Tests are organized by version to track when features were introduced:
   - Configuration file loading
   - Error handling
   - Uses test database: `test_db_two` (root/root@1234)
+
+### v1.4/
+
+- **AuthSetupEnhancementTest.php** - Tests for authentication setup enhancement:
+  - Automatic UsersTable model generation during project initialization
+  - Test user credential storage in `.auth-setup.json`
+  - Post-migration automatic user creation
+  - AuthRouter bug fix (updated_at column definition)
+  - AuthRouter preference for existing model files over auto-creation
+  - Proper Timestamp column definitions
+  - Uses test database: `test_db_v14` (root/root@1234)
 
 ## Running Tests
 

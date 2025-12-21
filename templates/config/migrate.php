@@ -352,6 +352,105 @@ try {
     } else {
         echo "\nNo new migrations were needed.\n";
     }
+    
+    // Check for auth setup file and create test user if needed
+    if (!$dryRun) {
+        $authSetupFile = ProjectPath::resolve('.auth-setup.json');
+        if (file_exists($authSetupFile)) {
+            try {
+                // Try to load createAuthUser function from Reut CLI source or project
+                $createAuthUserPath = __DIR__ . '/createAuthUser.php';
+                if (!file_exists($createAuthUserPath)) {
+                    // Try relative to project root (if migrate.php was copied to config/)
+                    $createAuthUserPath = ProjectPath::resolve('..', 'src', 'createAuthUser.php');
+                }
+                if (file_exists($createAuthUserPath)) {
+                    require_once $createAuthUserPath;
+                } else {
+                    // Fallback: define function inline if file not found
+                    if (!function_exists('createAuthUser')) {
+                        function createAuthUser(string $identifier, string $password, array $config, array $authConfig): array {
+                            try {
+                                $tableName = $authConfig['table'];
+                                $identifierField = $authConfig['fields']['identifier'];
+                                $passwordField = $authConfig['fields']['password'];
+                                
+                                $modelClass = "Reut\\Models\\{$tableName}Table";
+                                if (!class_exists($modelClass)) {
+                                    $modelsDir = rtrim(ProjectPath::resolve('models'), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+                                    $modelFile = $modelsDir . $tableName . 'Table.php';
+                                    if (file_exists($modelFile)) {
+                                        require_once $modelFile;
+                                    }
+                                }
+                                
+                                if (!class_exists($modelClass)) {
+                                    return ['success' => false, 'message' => "Auth model class {$modelClass} not found."];
+                                }
+                                
+                                $authModel = new $modelClass($config);
+                                $existing = $authModel->findOne([$identifierField => $identifier]);
+                                if ($existing && $existing->results) {
+                                    return ['success' => false, 'message' => "User with {$identifierField} '{$identifier}' already exists."];
+                                }
+                                
+                                if (strlen($password) < 6) {
+                                    return ['success' => false, 'message' => 'Password must be at least 6 characters long.'];
+                                }
+                                
+                                $userData = [
+                                    $identifierField => $identifier,
+                                    $passwordField => password_hash($password, PASSWORD_DEFAULT)
+                                ];
+                                
+                                $result = $authModel->addOne($userData);
+                                
+                                if ($result === true) {
+                                    return ['success' => true, 'message' => "Test user '{$identifier}' created successfully."];
+                                } else {
+                                    $errorMsg = is_string($result) ? $result : 'Unknown error occurred';
+                                    return ['success' => false, 'message' => "Failed to create user: {$errorMsg}"];
+                                }
+                            } catch (\Exception $e) {
+                                return ['success' => false, 'message' => "Error creating user: " . $e->getMessage()];
+                            }
+                        }
+                    }
+                }
+                
+                $authSetupData = json_decode(file_get_contents($authSetupFile), true);
+                
+                if (is_array($authSetupData) && isset($authSetupData['identifier']) && isset($authSetupData['password'])) {
+                    // Load auth config
+                    $authConfigPath = ProjectPath::resolve('auth.php');
+                    $authConfig = file_exists($authConfigPath) ? require $authConfigPath : [];
+                    
+                    echo "\nCreating test user for authentication...\n";
+                    $result = createAuthUser(
+                        $authSetupData['identifier'],
+                        $authSetupData['password'],
+                        $config,
+                        $authConfig
+                    );
+                    
+                    if ($result['success']) {
+                        echo $result['message'] . "\n";
+                        // Delete the setup file after successful creation
+                        unlink($authSetupFile);
+                        echo "\nYou can now login at POST /auth/login with:\n";
+                        $identifierField = $authConfig['fields']['identifier'] ?? 'email';
+                        echo "  - {$identifierField}: {$authSetupData['identifier']}\n";
+                    } else {
+                        echo "Warning: " . $result['message'] . "\n";
+                        echo "You can create a user later via POST /auth/register\n";
+                    }
+                }
+            } catch (\Exception $e) {
+                echo "Warning: Could not create test user: " . $e->getMessage() . "\n";
+                echo "You can create a user later via POST /auth/register\n";
+            }
+        }
+    }
 } catch (ConnectionError $e) {
     echo "Database Connection Error: " . $e->getMessage() . "\n";
     echo "Please check your database configuration in config.php or .env file.\n";

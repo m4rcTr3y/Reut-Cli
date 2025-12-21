@@ -149,6 +149,24 @@ function initCommand(array $argv): void
     $secretKey = prompt('Enter secret key (default: 12345678): ') ?: '12345678';
     $enableAuth = prompt('Enable built-in authentication? (y/n, default: y): ') ?: 'y';
     $authEnabled = (strtolower($enableAuth) === 'y' || strtolower($enableAuth) === 'yes') ? 'true' : 'false';
+    
+    // Prompt for test user credentials if auth is enabled
+    $testUserIdentifier = null;
+    $testUserPassword = null;
+    if ($authEnabled === 'true') {
+        echo PHP_EOL . 'Test User Setup (for authentication):' . PHP_EOL;
+        $testUserIdentifier = prompt('Enter test user email/username: ');
+        if (empty($testUserIdentifier)) {
+            echo "Warning: No test user identifier provided. You can create a user later via the API." . PHP_EOL;
+        } else {
+            $testUserPassword = prompt('Enter test user password (min 6 characters): ');
+            if (empty($testUserPassword) || strlen($testUserPassword) < 6) {
+                echo "Warning: Invalid password. Test user creation will be skipped." . PHP_EOL;
+                $testUserIdentifier = null;
+                $testUserPassword = null;
+            }
+        }
+    }
 
     // Create project directory
     $projectDir = getcwd() . DIRECTORY_SEPARATOR . $projectName;
@@ -231,6 +249,14 @@ APP_ENV=development
 REUT_AUTH_ENABLED=$authEnabled
 REUT_DOCS_ENABLED=true
 
+# CORS Configuration
+REUT_CORS_ENABLED=true
+REUT_CORS_ALLOWED_ORIGINS=*
+REUT_CORS_ALLOWED_METHODS=GET, POST, PUT, DELETE, PATCH, OPTIONS
+REUT_CORS_ALLOWED_HEADERS=Content-Type, Authorization, X-Requested-With, X-CSRF-Token
+REUT_CORS_ALLOW_CREDENTIALS=false
+REUT_CORS_MAX_AGE=86400
+
 # Rate Limiting Configuration
 REUT_RATE_LIMIT_ENABLED=true
 REUT_RATE_LIMIT_MAX_REQUESTS=100
@@ -261,6 +287,52 @@ ENV;
         : '<?php return [];';  // Fallback if missing
     file_put_contents('auth.php', $authContent);
     echo 'Created auth.php' . PHP_EOL;
+    
+    // Generate UsersTable model if auth is enabled
+    $authModelGenerated = false;
+    if ($authEnabled === 'true') {
+        // Load auth config to get table name and identifier field
+        $authConfig = [];
+        if (file_exists('auth.php')) {
+            $authConfig = require 'auth.php';
+        }
+        $tableName = $authConfig['table'] ?? 'Users';
+        $identifierField = $authConfig['fields']['identifier'] ?? 'email';
+        
+        // Check if model already exists
+        $modelsDir = 'models' . DIRECTORY_SEPARATOR;
+        if (!is_dir($modelsDir)) {
+            mkdir($modelsDir, 0755, true);
+        }
+        $modelFile = $modelsDir . $tableName . 'Table.php';
+        
+        if (!file_exists($modelFile)) {
+            // Generate the auth model
+            require_once __DIR__ . '/../src/createAuthModel.php';
+            try {
+                if (createAuthModel($tableName, $identifierField, false)) {
+                    echo "Generated {$tableName}Table model" . PHP_EOL;
+                    $authModelGenerated = true;
+                }
+            } catch (\Exception $e) {
+                echo "Warning: Failed to generate auth model: " . $e->getMessage() . PHP_EOL;
+            }
+        } else {
+            echo "Auth model {$tableName}Table already exists, skipping generation" . PHP_EOL;
+        }
+        
+        // Store test user credentials for later creation
+        if ($testUserIdentifier && $testUserPassword) {
+            $authSetupData = [
+                'identifier' => $testUserIdentifier,
+                'password' => $testUserPassword,
+                'table' => $tableName,
+                'identifierField' => $identifierField
+            ];
+            file_put_contents('.auth-setup.json', json_encode($authSetupData, JSON_PRETTY_PRINT));
+            echo "Stored test user credentials (will be created after migrations)" . PHP_EOL;
+        }
+    }
 
     // Generate index.php
     $indexContent = file_exists(__DIR__ . '/../src/indexContent.php')
@@ -336,8 +408,20 @@ PHP;
     echo PHP_EOL . 'Project initialized successfully!' . PHP_EOL;
     echo 'Next steps:' . PHP_EOL;
     echo '- Run `composer install` in the project directory.' . PHP_EOL;
-    echo '- Use `Reut generate:model Users` to create models.' . PHP_EOL;
-    echo '- Or use `Reut manage.php generate:model Users` globally.' . PHP_EOL;
+    
+    if ($authEnabled === 'true' && $authModelGenerated) {
+        echo '- Run `Reut migrate` or `Reut create` to create the authentication table.' . PHP_EOL;
+        if ($testUserIdentifier) {
+            echo '- After migration, test user will be created automatically.' . PHP_EOL;
+            echo '- You can then login at POST /auth/login with:' . PHP_EOL;
+            echo "  - {$authConfig['fields']['identifier'] ?? 'email'}: {$testUserIdentifier}" . PHP_EOL;
+        } else {
+            echo '- Create a user via POST /auth/register or run migrations and use the setup prompt.' . PHP_EOL;
+        }
+    } else {
+        echo '- Use `Reut generate:model Users` to create models.' . PHP_EOL;
+        echo '- Or use `Reut manage.php generate:model Users` globally.' . PHP_EOL;
+    }
 }
 
 function prompt(string $message): string
@@ -380,7 +464,7 @@ function updateCommand(): void
     echo "Updating REUT CLI..." . PHP_EOL;
     
     // Get current version
-    $currentVersion = "1.3.7";
+    $currentVersion = "1.4.0";
     echo "Current version: v{$currentVersion}" . PHP_EOL;
     
     // Clear composer cache for reut packages (cross-platform)

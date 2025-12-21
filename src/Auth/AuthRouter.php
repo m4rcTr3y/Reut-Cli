@@ -12,6 +12,7 @@ use Reut\DB\Types\Varchar;
 use Reut\DB\Types\Timestamp;
 use Reut\Middleware\JwtAuth;
 use Reut\Router\ReuteRoute;
+use Reut\Support\ProjectPath;
 
 /**
  * Built-in authentication router
@@ -183,11 +184,24 @@ class AuthRouter extends NoAuth
 
         // Try to load existing model
         $modelClass = "Reut\\Models\\{$tableName}Table";
+        
+        // First check if class already exists
         if (class_exists($modelClass)) {
             return new $modelClass($this->config);
         }
+        
+        // If class doesn't exist, try to require the model file
+        $modelsDir = ProjectPath::resolve('models');
+        $modelFile = rtrim($modelsDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $tableName . 'Table.php';
+        
+        if (file_exists($modelFile)) {
+            require_once $modelFile;
+            if (class_exists($modelClass)) {
+                return new $modelClass($this->config);
+            }
+        }
 
-        // Auto-create model if enabled
+        // Auto-create model if enabled (only if model file doesn't exist)
         if ($this->authConfig['auto_create_table']) {
             return $this->createDefaultAuthModel($tableName, $identifierField);
         }
@@ -221,7 +235,7 @@ class AuthRouter extends NoAuth
 
         // Timestamps
         $model->addColumn('created_at', new Timestamp(false, true));
-        $model->addColumn('updated_at', new Timestamp(true, false, true));
+        $model->addColumn('updated_at', new Timestamp(false, true, true));
 
         // Create table if it doesn't exist
         if (!$model->tableExists($tableName)) {
@@ -231,4 +245,5 @@ class AuthRouter extends NoAuth
         return $model;
     }
 }
+
 

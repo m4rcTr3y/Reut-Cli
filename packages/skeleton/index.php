@@ -11,6 +11,7 @@ require REUT_PROJECT_ROOT . '/config.php';
 use Slim\Factory\AppFactory;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Slim\Exception\HttpNotFoundException;
+use Reut\Middleware\CorsMiddleware;
 use Reut\Middleware\RateLimitMiddleware;
 use Reut\Middleware\CsrfMiddleware;
 
@@ -21,6 +22,9 @@ $app = AppFactory::create();
 
 $app->addRoutingMiddleware();
 $app->addBodyParsingMiddleware();
+
+// Add CORS middleware first to handle OPTIONS preflight requests early
+$app->add(new CorsMiddleware($app));
 
 // Add security middlewares
 $app->add(new RateLimitMiddleware($app));
@@ -91,22 +95,6 @@ $notFoundHandler = function (Request $request) {
 $errorMiddleware = $app->addErrorMiddleware($displayErrorDetails, true, true);
 $errorMiddleware->setDefaultErrorHandler($customErrorHandler);
 $errorMiddleware->setErrorHandler(HttpNotFoundException::class, $notFoundHandler);
-
-$app->add(function (Request $request, $handler) {
-    $response = $handler->handle($request);
-
-    $response = $response
-        ->withHeader('Access-Control-Allow-Origin', '*')
-        ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS')
-        ->withHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With')
-        ->withHeader('Access-Control-Allow-Credentials', 'true');
-
-    if ($request->getMethod() === 'OPTIONS') {
-        return $response->withStatus(204);
-    }
-
-    return $response;
-});
 
 $app->run();
 

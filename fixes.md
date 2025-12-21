@@ -145,3 +145,27 @@
 - Shows current version before update and verifies new version after update.
 - Usage: Simply run `Reut update` from anywhere to update to the latest version.
 
+## Auth Setup Enhancement (v1.4.0)
+- **Fixed AuthRouter bug**: Corrected `updated_at` column definition in `AuthRouter::createDefaultAuthModel()` from `new Timestamp(true, false, true)` to `new Timestamp(false, true, true)`, fixing "Invalid default value for 'updated_at'" MySQL error.
+- **Automatic UsersTable model generation**: When authentication is enabled during `Reut init`, the CLI now automatically generates a `UsersTable` model file in the `models/` directory with proper column definitions (id, email/username, password, created_at, updated_at).
+- **Test user creation**: Added ability to prompt for test user credentials during `Reut init` and automatically create the user after migrations complete.
+- **Post-migration user creation**: Enhanced `migrate.php` to check for `.auth-setup.json` file after migrations and automatically create the test user if credentials were provided during initialization.
+- **AuthRouter model file preference**: Updated `AuthRouter::getAuthModel()` to prefer existing model files over in-memory auto-creation, ensuring generated models take precedence.
+- **New CLI functions**: Added `createAuthModel()` and `createAuthUser()` functions in `src/` for programmatic auth model and user creation.
+- **Enhanced init command**: Updated `bin/Reut initCommand()` to prompt for test user credentials when auth is enabled, generate the UsersTable model automatically, and provide clear next-step instructions.
+
+## CORS Middleware Implementation (v1.4.0)
+- **New CorsMiddleware class**: Created dedicated `CorsMiddleware` class following the same pattern as `CsrfMiddleware` and `RateLimitMiddleware`.
+- **Security fix**: Fixed invalid CORS header combination (`Access-Control-Allow-Origin: *` with `Access-Control-Allow-Credentials: true`) - now properly handles credentials with specific origins.
+- **Configurable CORS settings**: Added environment variables for CORS configuration:
+  - `REUT_CORS_ENABLED` (default: `true`)
+  - `REUT_CORS_ALLOWED_ORIGINS` (default: `*`)
+  - `REUT_CORS_ALLOWED_METHODS` (default: `GET, POST, PUT, DELETE, PATCH, OPTIONS`)
+  - `REUT_CORS_ALLOWED_HEADERS` (default: `Content-Type, Authorization, X-Requested-With, X-CSRF-Token`)
+  - `REUT_CORS_ALLOW_CREDENTIALS` (default: `false` when origin is `*`, `true` otherwise)
+  - `REUT_CORS_MAX_AGE` (default: `86400` seconds)
+- **Proper OPTIONS handling**: CORS middleware is now added early in the middleware stack to handle OPTIONS preflight requests before other middleware.
+- **Origin validation**: Validates request origins against allowed list and returns 403 for unauthorized origins.
+- **Updated templates**: Replaced inline CORS closure in `indexContent.php` and `packages/skeleton/index.php` with the new `CorsMiddleware` class.
+- **Environment configuration**: Added CORS settings to `.env` file generation in `bin/Reut initCommand()`.
+
