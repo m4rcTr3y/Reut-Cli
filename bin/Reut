@@ -159,11 +159,19 @@ function initCommand(array $argv): void
         if (empty($testUserIdentifier)) {
             echo "Warning: No test user identifier provided. You can create a user later via the API." . PHP_EOL;
         } else {
-            $testUserPassword = prompt('Enter test user password (min 6 characters): ');
-            if (empty($testUserPassword) || strlen($testUserPassword) < 6) {
-                echo "Warning: Invalid password. Test user creation will be skipped." . PHP_EOL;
-                $testUserIdentifier = null;
-                $testUserPassword = null;
+            $testUserPassword = '';
+            $passwordValid = false;
+            while (!$passwordValid) {
+                $testUserPassword = prompt('Enter test user password (min 6 characters): ');
+                if (empty($testUserPassword)) {
+                    echo "Warning: No password provided. Test user creation will be skipped." . PHP_EOL;
+                    $testUserIdentifier = null;
+                    break;
+                } elseif (strlen($testUserPassword) < 6) {
+                    echo "Error: Password must be at least 6 characters. Please try again." . PHP_EOL;
+                } else {
+                    $passwordValid = true;
+                }
             }
         }
     }
@@ -291,13 +299,23 @@ ENV;
     // Generate UsersTable model if auth is enabled
     $authModelGenerated = false;
     if ($authEnabled === 'true') {
-        // Load auth config to get table name and identifier field
-        $authConfig = [];
+        // Get table name and identifier field from defaults (can't require auth.php yet as vendor/autoload.php doesn't exist)
+        // These match the defaults in authContent.php
+        $tableName = 'Users';
+        $identifierField = 'email';
+        
+        // Try to read auth.php as text to extract config if it exists (without requiring it)
         if (file_exists('auth.php')) {
-            $authConfig = require 'auth.php';
+            $authFileContent = file_get_contents('auth.php');
+            // Extract table name from auth.php content (simple regex match)
+            if (preg_match("/'table'\s*=>\s*['\"]?(\w+)['\"]?/", $authFileContent, $matches)) {
+                $tableName = $matches[1];
+            }
+            // Extract identifier field
+            if (preg_match("/'identifier'\s*=>\s*['\"]?(\w+)['\"]?/", $authFileContent, $matches)) {
+                $identifierField = $matches[1];
+            }
         }
-        $tableName = $authConfig['table'] ?? 'Users';
-        $identifierField = $authConfig['fields']['identifier'] ?? 'email';
         
         // Check if model already exists
         $modelsDir = 'models' . DIRECTORY_SEPARATOR;
