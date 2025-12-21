@@ -5,6 +5,15 @@ use Reut\Support\ProjectPath;
 
 require_once __DIR__ . '/registerRoutes.php';
 
+    // Load environment variables
+    $projectRoot = ProjectPath::resolve('.');
+    if (file_exists($projectRoot . '/.env') && class_exists('\Dotenv\Dotenv')) {
+        $dotenv = \Dotenv\Dotenv::createImmutable($projectRoot);
+        $dotenv->safeLoad();
+    }
+
+    // Get auth model name from environment variable (defaults to 'Users')
+    $authModelName = $_ENV['AUTH_TABLE'] ?? 'Users';
 
     $modelsDir = rtrim(ProjectPath::resolve('models'), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
     $routersDir = rtrim(ProjectPath::resolve('routers'), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
@@ -23,6 +32,13 @@ require_once __DIR__ . '/registerRoutes.php';
     foreach ($modelFiles as $file) {
         // Extract model name (e.g., User from UserTable.php)
         $modelName = str_replace('Table.php', '', basename($file));
+        
+        // Skip auth model - don't generate routes for it
+        if ($modelName === $authModelName) {
+            echo "Skipping auth model: $modelName (configured in AUTH_TABLE)\n";
+            continue;
+        }
+        
         $routerFile = $routersDir . $modelName . 'Router.php';
 
         // Skip if file exists (unless --force is used)

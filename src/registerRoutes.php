@@ -5,6 +5,16 @@ use Reut\Support\ProjectPath;
 
 function RegisterRoutes(string $configDir, string $routersDir)
 {
+    // Load environment variables
+    $projectRoot = ProjectPath::resolve('.');
+    if (file_exists($projectRoot . '/.env') && class_exists('\Dotenv\Dotenv')) {
+        $dotenv = \Dotenv\Dotenv::createImmutable($projectRoot);
+        $dotenv->safeLoad();
+    }
+
+    // Get auth model name from environment variable (defaults to 'Users')
+    $authModelName = $_ENV['AUTH_TABLE'] ?? 'Users';
+    $authRouterName = $authModelName . 'Router';
 
     $configDir = rtrim($configDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
     $routersDir = rtrim($routersDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
@@ -23,6 +33,13 @@ function RegisterRoutes(string $configDir, string $routersDir)
     foreach ($routerFiles as $file) {
         // Extract router class name (e.g., UsersRouter from UsersRouter.php)
         $routerName = str_replace('.php', '', basename($file));
+        
+        // Skip auth model router - don't register it
+        if ($routerName === $authRouterName) {
+            echo "Skipping auth router registration: $routerName (configured in AUTH_TABLE)\n";
+            continue;
+        }
+        
         $routerClasses[] = $routerName;
     }
 
@@ -45,7 +62,8 @@ function RegisterRoutes(string $configDir, string $routersDir)
 
   
 
-    // Generate routes.php content
+    // Generate routes.php content for model routers (e.g., ProductsRouter, OrdersRouter)
+    // Note: AuthRouter (built-in auth routes) is registered separately below and is NOT affected by the filtering above
     $uses = '';
     $registers = '';
     foreach ($routerClasses as $router) {
@@ -54,6 +72,8 @@ function RegisterRoutes(string $configDir, string $routersDir)
         $registers .=" new {$router}(\$app,\$config);\n";
     }
 
+    // Register built-in AuthRouter (provides default auth routes like /login, /register, etc.)
+    // This is separate from model routers and will always be registered if auth.php exists
     // Check if auth is enabled
     $authEnabled = "(\$_ENV['REUT_AUTH_ENABLED'] ?? 'true') === 'true'";
     $authUses = '';
