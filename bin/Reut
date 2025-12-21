@@ -247,8 +247,10 @@ function initCommand(array $argv): void
     }
 
     // Generate .env file
+    $dbHost = 'localhost'; // Default host
     $envContent = <<<ENV
 SECRET_KEY=$secretKey
+DB_HOST=$dbHost
 DB_USERNAME=$dbUsername
 DB_PASSWORD=$dbPassword
 DB_NAME=$dbName
@@ -374,14 +376,14 @@ if (!file_exists(\$autoload)) {
 require \$autoload;
 
 // Check if reut/core is installed by checking for DatabaseCreator class
-// Use a more lenient check - try to use the class and catch if it doesn't exist
-if (!class_exists('Reut\\\\DB\\\\DatabaseCreator')) {
+// Use DatabaseCreator::class to ensure the class is loaded via autoloader
+use Reut\DB\DatabaseCreator;
+if (!class_exists(DatabaseCreator::class)) {
     fwrite(STDERR, "Composer dependencies missing. Run `composer install` to install reut/core.\\n");
     fwrite(STDERR, "If you just ran composer install, try running the command again.\\n");
     exit(1);
 }
 
-use Reut\DB\DatabaseCreator;
 DatabaseCreator::Generate();
 PHP;
     file_put_contents('manage.php', $manageContent);

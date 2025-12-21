@@ -1,14 +1,15 @@
 <?php
 declare(strict_types=1);
 
+use Reut\Support\ProjectPath;
+
 /**
  * view.php
  * Spins up the PHP built-in server to render the schema viewer.
  * Usage: php manage.php view [--host=127.0.0.1] [--port=8080]
  */
-
-$projectRoot = dirname(__DIR__);
-$viewerDir   = $projectRoot . '/viewer';
+$projectRoot = ProjectPath::root();
+$viewerDir   = ProjectPath::resolve('viewer');
 
 // Ensure the viewer scaffolding exists (including the new router.php)
 ensureViewerAssets($viewerDir);

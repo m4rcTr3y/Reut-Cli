@@ -11,9 +11,15 @@ declare(strict_types=1);
  */
 function createAuthModel(string $tableName, string $identifierField = 'email', bool $force = false): bool
 {
-    // Resolve models directory (works during init when we're already in project directory)
-    $projectRoot = defined('REUT_PROJECT_ROOT') ? REUT_PROJECT_ROOT : getcwd();
-    $modelsDir = rtrim($projectRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'models' . DIRECTORY_SEPARATOR;
+    // Resolve models directory
+    // Use ProjectPath if available (after composer install), otherwise fallback for init context
+    if (class_exists('Reut\Support\ProjectPath')) {
+        $modelsDir = rtrim(\Reut\Support\ProjectPath::resolve('models'), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+    } else {
+        // Fallback for init command (before composer install)
+        $projectRoot = defined('REUT_PROJECT_ROOT') ? REUT_PROJECT_ROOT : getcwd();
+        $modelsDir = rtrim($projectRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'models' . DIRECTORY_SEPARATOR;
+    }
     
     // Ensure models directory exists
     if (!is_dir($modelsDir)) {

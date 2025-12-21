@@ -24,9 +24,14 @@ function createAuthUser(string $identifier, string $password, array $config, arr
         $modelClass = "Reut\\Models\\{$tableName}Table";
         if (!class_exists($modelClass)) {
             // Try to require the model file
-            // Resolve models directory (works when called from migrate.php which sets REUT_PROJECT_ROOT)
-            $projectRoot = defined('REUT_PROJECT_ROOT') ? REUT_PROJECT_ROOT : getcwd();
-            $modelsDir = rtrim($projectRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'models' . DIRECTORY_SEPARATOR;
+            // Use ProjectPath if available, otherwise fallback
+            if (class_exists('Reut\Support\ProjectPath')) {
+                $modelsDir = rtrim(\Reut\Support\ProjectPath::resolve('models'), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+            } else {
+                // Fallback
+                $projectRoot = defined('REUT_PROJECT_ROOT') ? REUT_PROJECT_ROOT : getcwd();
+                $modelsDir = rtrim($projectRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'models' . DIRECTORY_SEPARATOR;
+            }
             $modelFile = $modelsDir . $tableName . 'Table.php';
             if (file_exists($modelFile)) {
                 require_once $modelFile;
