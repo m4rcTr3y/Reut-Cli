@@ -19,7 +19,7 @@
             "Reut\\DB\\Creator\\":"config/db/",
             "Reut\\Auth\\":"config/auth/",
             "Reut\\Router\\":"config/router/",
-            "Reut\\Middleware\\":"config/middleware/",
+            "Reut\\Middleware\\":"config/Middleware/",
             "Reut\\Models\\":"models/",
             "Reut\\Routers\\":"routers/"
            
