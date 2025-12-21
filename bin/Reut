@@ -490,7 +490,7 @@ function updateCommand(): void
     echo "Updating REUT CLI..." . PHP_EOL;
     
     // Get current version
-    $currentVersion = "1.4.0";
+    $currentVersion = "1.4.2";
     echo "Current version: v{$currentVersion}" . PHP_EOL;
     
     // Clear composer cache completely to avoid tag caching issues
