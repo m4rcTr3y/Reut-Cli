@@ -7,11 +7,13 @@ if (!defined('REUT_PROJECT_ROOT')) {
     define('REUT_PROJECT_ROOT', __DIR__);
 }
 
-require REUT_PROJECT_ROOT . '/vendor/autoload.php';
-use Dotenv\Dotenv;
-
-\$dotenv = Dotenv::createImmutable(REUT_PROJECT_ROOT);
-\$dotenv->load();
+// Only require autoload if it exists (e.g., after composer install)
+\$autoloadPath = REUT_PROJECT_ROOT . '/vendor/autoload.php';
+if (file_exists(\$autoloadPath)) {
+    require \$autoloadPath;
+    \$dotenv = \Dotenv\Dotenv::createImmutable(REUT_PROJECT_ROOT);
+    \$dotenv->load();
+}
 
 // Authentication configuration
 \$authConfig = [
