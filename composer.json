@@ -35,8 +35,5 @@
     "support": {
         "email": "marctrevis61@proton.me",
         "issues": "https://github.com/m4rcTr3y/Reut-Cli/issues"
-    },
-    "config": {
-        "bin-dir": "bin"
     }
 }
