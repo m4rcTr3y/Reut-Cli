@@ -223,6 +223,227 @@ class DataBase
         return $this->foreignKeys;
     }
 
+    /**
+     * Get the SQL type name from a ColumnType instance
+     * 
+     * @param ColumnType $columnType
+     * @return string SQL type name (e.g., 'INTEGER', 'VARCHAR')
+     */
+    public function getColumnTypeName(ColumnType $columnType): string
+    {
+        // Use reflection to access protected $name property
+        $reflection = new \ReflectionClass($columnType);
+        $property = $reflection->getProperty('name');
+        $property->setAccessible(true);
+        return $property->getValue($columnType);
+    }
+
+    /**
+     * Validate that a foreign key column type matches the referenced column type
+     * 
+     * @param string $referencedTable The referenced table name
+     * @param string $referencedColumn The referenced column name
+     * @param ColumnType $localColumnType The local column type
+     * @return bool True if types are compatible
+     * @throws \Exception If types don't match
+     */
+    public function validateForeignKeyColumnType(string $referencedTable, string $referencedColumn, ColumnType $localColumnType): bool
+    {
+        $this->connect();
+        if (!$this->pdo) {
+            throw new \RuntimeException('Database connection failed');
+        }
+
+        try {
+            // Get the referenced column type from database
+            $stmt = $this->pdo->prepare("
+                SELECT DATA_TYPE, COLUMN_TYPE 
+                FROM INFORMATION_SCHEMA.COLUMNS 
+                WHERE TABLE_SCHEMA = :dbname 
+                AND TABLE_NAME = :tableName 
+                AND COLUMN_NAME = :columnName
+            ");
+            $stmt->execute([
+                'dbname' => $this->config['dbname'],
+                'tableName' => $referencedTable,
+                'columnName' => $referencedColumn
+            ]);
+            
+            $result = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if (!$result) {
+                throw new \Exception("Referenced column '{$referencedColumn}' not found in table '{$referencedTable}'");
+            }
+
+            $referencedDataType = strtoupper($result['DATA_TYPE']);
+            $localTypeName = strtoupper($this->getColumnTypeName($localColumnType));
+
+            // Map of compatible types
+            $compatibleTypes = [
+                'INT' => ['INTEGER', 'INT', 'BIGINT', 'SMALLINT', 'TINYINT', 'MEDIUMINT'],
+                'INTEGER' => ['INTEGER', 'INT', 'BIGINT', 'SMALLINT', 'TINYINT', 'MEDIUMINT'],
+                'BIGINT' => ['BIGINT', 'INT', 'INTEGER'],
+                'VARCHAR' => ['VARCHAR', 'CHAR', 'TEXT', 'TINYTEXT', 'MEDIUMTEXT', 'LONGTEXT'],
+                'CHAR' => ['CHAR', 'VARCHAR', 'TEXT'],
+                'TEXT' => ['TEXT', 'VARCHAR', 'CHAR', 'TINYTEXT', 'MEDIUMTEXT', 'LONGTEXT'],
+            ];
+
+            // Check exact match first
+            if ($localTypeName === $referencedDataType) {
+                return true;
+            }
+
+            // Check compatibility
+            if (isset($compatibleTypes[$referencedDataType])) {
+                if (in_array($localTypeName, $compatibleTypes[$referencedDataType], true)) {
+                    return true;
+                }
+            }
+
+            // For integer types, check if both are numeric
+            if (in_array($referencedDataType, ['INT', 'INTEGER', 'BIGINT', 'SMALLINT', 'TINYINT', 'MEDIUMINT']) &&
+                in_array($localTypeName, ['INT', 'INTEGER', 'BIGINT', 'SMALLINT', 'TINYINT', 'MEDIUMINT'])) {
+                return true;
+            }
+
+            throw new \Exception(
+                "Foreign key column type mismatch: " .
+                "Local column type '{$localTypeName}' is not compatible with " .
+                "referenced column type '{$referencedDataType}' in table '{$referencedTable}'"
+            );
+        } catch (\PDOException $e) {
+            throw new \Exception("Error validating foreign key column type: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Validate that all foreign key relationships are valid (for migrations)
+     * 
+     * @param array $allTableInstances Array of all table instances to check against
+     * @return array Array of validation errors (empty if valid)
+     */
+    public function validateForeignKeyRelationships(array $allTableInstances): array
+    {
+        $errors = [];
+        
+        foreach ($this->foreignKeys as $fk) {
+            $referencedTable = $fk['referenced_table'];
+            $referencedColumn = $fk['referenced_column'];
+            $localColumn = $fk['column'];
+            
+            // Check if referenced table exists in our models
+            $referencedTableInstance = null;
+            foreach ($allTableInstances as $instance) {
+                if ($instance->tableName === $referencedTable) {
+                    $referencedTableInstance = $instance;
+                    break;
+                }
+            }
+            
+            if (!$referencedTableInstance) {
+                $errors[] = "Foreign key '{$localColumn}' references table '{$referencedTable}' which does not exist in models";
+                continue;
+            }
+            
+            // Check if referenced column exists in referenced table model
+            if (!isset($referencedTableInstance->columns[$referencedColumn])) {
+                $errors[] = "Foreign key '{$localColumn}' references column '{$referencedColumn}' which does not exist in model '{$referencedTable}'";
+                continue;
+            }
+            
+            // Validate column types match (only if table exists in database)
+            // For new tables, we'll validate during migration
+            try {
+                $localColumnType = $this->columns[$localColumn];
+                $referencedColumnType = $referencedTableInstance->columns[$referencedColumn];
+                
+                // Compare types from model definitions
+                $localTypeName = strtoupper($this->getColumnTypeName($localColumnType));
+                $referencedTypeName = strtoupper($this->getColumnTypeName($referencedColumnType));
+                
+                // Map of compatible types
+                $compatibleTypes = [
+                    'INT' => ['INTEGER', 'INT', 'BIGINT', 'SMALLINT', 'TINYINT', 'MEDIUMINT'],
+                    'INTEGER' => ['INTEGER', 'INT', 'BIGINT', 'SMALLINT', 'TINYINT', 'MEDIUMINT'],
+                    'BIGINT' => ['BIGINT', 'INT', 'INTEGER'],
+                    'VARCHAR' => ['VARCHAR', 'CHAR', 'TEXT', 'TINYTEXT', 'MEDIUMTEXT', 'LONGTEXT'],
+                    'CHAR' => ['CHAR', 'VARCHAR', 'TEXT'],
+                    'TEXT' => ['TEXT', 'VARCHAR', 'CHAR', 'TINYTEXT', 'MEDIUMTEXT', 'LONGTEXT'],
+                ];
+
+                // Check exact match first
+                if ($localTypeName === $referencedTypeName) {
+                    continue; // Types match
+                }
+
+                // Check compatibility
+                if (isset($compatibleTypes[$referencedTypeName])) {
+                    if (in_array($localTypeName, $compatibleTypes[$referencedTypeName], true)) {
+                        continue; // Types are compatible
+                    }
+                }
+
+                // For integer types, check if both are numeric
+                if (in_array($referencedTypeName, ['INT', 'INTEGER', 'BIGINT', 'SMALLINT', 'TINYINT', 'MEDIUMINT']) &&
+                    in_array($localTypeName, ['INT', 'INTEGER', 'BIGINT', 'SMALLINT', 'TINYINT', 'MEDIUMINT'])) {
+                    continue; // Both are integer types
+                }
+
+                $errors[] = "Foreign key '{$localColumn}': Column type '{$localTypeName}' is not compatible with referenced column type '{$referencedTypeName}' in table '{$referencedTable}'";
+            } catch (\Exception $e) {
+                $errors[] = "Foreign key '{$localColumn}': " . $e->getMessage();
+            }
+        }
+        
+        return $errors;
+    }
+
+    /**
+     * Get relationship type (belongsTo, hasMany, etc.)
+     * This is a belongsTo relationship if this table has a foreign key column
+     * 
+     * @param string $relationshipName Optional relationship name (column name)
+     * @return string Relationship type
+     */
+    public function getRelationshipType(?string $relationshipName = null): string
+    {
+        if ($relationshipName && isset($this->columns[$relationshipName])) {
+            // Check if this column is a foreign key
+            foreach ($this->foreignKeys as $fk) {
+                if ($fk['column'] === $relationshipName) {
+                    return 'belongsTo';
+                }
+            }
+        }
+        
+        // Default: if we have foreign keys, they are belongsTo relationships
+        return !empty($this->foreignKeys) ? 'belongsTo' : 'none';
+    }
+
+    /**
+     * Get relationship metadata for a specific relationship
+     * 
+     * @param string $columnName The foreign key column name
+     * @return array|null Relationship metadata or null if not found
+     */
+    public function getRelationshipMetadata(string $columnName): ?array
+    {
+        foreach ($this->foreignKeys as $fk) {
+            if ($fk['column'] === $columnName) {
+                return [
+                    'column' => $fk['column'],
+                    'referenced_table' => $fk['referenced_table'],
+                    'referenced_column' => $fk['referenced_column'],
+                    'type' => 'belongsTo',
+                    'on_delete' => $fk['on_delete'],
+                    'on_update' => $fk['on_update'],
+                    'constraint' => $fk['constraint'] ?? null
+                ];
+            }
+        }
+        
+        return null;
+    }
+
     public function createDatabase($dbname)
     {
         try {
@@ -268,6 +489,334 @@ class DataBase
     }
 
     // CRUD operations and other methods...
+
+    /**
+     * Eager load relationships for the current results
+     * 
+     * @param array|string $relationships Relationship names to load (e.g., ['user', 'comments'] or 'user,comments')
+     * @return $this
+     */
+    public function with($relationships)
+    {
+        if (empty($this->results)) {
+            return $this;
+        }
+
+        // Normalize relationships to array
+        if (is_string($relationships)) {
+            $relationships = array_map('trim', explode(',', $relationships));
+        }
+
+        if (empty($relationships)) {
+            return $this;
+        }
+
+        // Check if results is single record or array
+        // Single record: associative array without numeric index 0
+        // Multiple records: indexed array with numeric keys starting from 0
+        $isSingle = is_array($this->results) && 
+                    !empty($this->results) && 
+                    !isset($this->results[0]) && 
+                    !array_key_exists(0, $this->results);
+        
+        if ($isSingle) {
+            // Single result (associative array, not indexed)
+            $this->loadRelationshipsForRecord($this->results, $relationships);
+        } else {
+            // Multiple results (indexed array)
+            foreach ($this->results as &$record) {
+                $this->loadRelationshipsForRecord($record, $relationships);
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * Load relationships for a single record
+     * 
+     * @param array &$record Record to load relationships for
+     * @param array $relationships Relationship names to load
+     */
+    private function loadRelationshipsForRecord(array &$record, array $relationships): void
+    {
+        foreach ($relationships as $relationship) {
+            $relationship = trim($relationship);
+            
+            // Check if this is a nested relationship (e.g., 'post_id.user_id' or 'post.user')
+            if (strpos($relationship, '.') !== false) {
+                $parts = explode('.', $relationship, 2);
+                $parentRel = trim($parts[0]);
+                $nestedRel = trim($parts[1]);
+                
+                // Load parent relationship first (only if not already loaded as an object)
+                // Check if parentRel is already an array (loaded relationship) or still an integer (FK value)
+                if (!isset($record[$parentRel]) || !is_array($record[$parentRel]) || (isset($record[$parentRel]) && is_numeric($record[$parentRel]))) {
+                    $this->loadSingleRelationship($record, $parentRel);
+                }
+                
+                // Then load nested relationship if parent was loaded
+                if (isset($record[$parentRel]) && $record[$parentRel] !== null && is_array($record[$parentRel])) {
+                    if (isset($record[$parentRel][0]) && is_numeric(key($record[$parentRel]))) {
+                        // HasMany relationship (array of records)
+                        foreach ($record[$parentRel] as &$parentRecord) {
+                            if (is_array($parentRecord)) {
+                                // Get the table name from the parent relationship metadata
+                                $parentMetadata = $this->getRelationshipMetadata($parentRel);
+                                $parentTable = $parentMetadata ? $parentMetadata['referenced_table'] : null;
+                                $this->loadNestedRelationshipForRecord($parentRecord, $nestedRel, $parentTable);
+                            }
+                        }
+                    } else {
+                        // BelongsTo relationship (single record object)
+                        // Get the table name from the parent relationship metadata
+                        $parentMetadata = $this->getRelationshipMetadata($parentRel);
+                        $parentTable = $parentMetadata ? $parentMetadata['referenced_table'] : null;
+                        $this->loadNestedRelationshipForRecord($record[$parentRel], $nestedRel, $parentTable);
+                    }
+                }
+            } else {
+                $this->loadSingleRelationship($record, $relationship);
+            }
+        }
+    }
+    
+    /**
+     * Load nested relationship for a record (used for nested eager loading)
+     * 
+     * @param array &$record The parent record that already has a relationship loaded
+     * @param string $nestedRel The nested relationship name (e.g., 'user_id')
+     * @param string|null $parentTableName The table name that the parent record belongs to (if known)
+     */
+    private function loadNestedRelationshipForRecord(array &$record, string $nestedRel, ?string $parentTableName = null): void
+    {
+        // For nested relationships, we need to load a relationship from an already-loaded record
+        // The record might be from a different table, so we need to query the database
+        // to find which table has this FK column
+        
+        if (!isset($record[$nestedRel]) || !is_numeric($record[$nestedRel])) {
+            return;
+        }
+        
+        $fkValue = $record[$nestedRel];
+        
+        try {
+            $this->connect();
+            if (!$this->pdo) {
+                return;
+            }
+            
+            // If we know the parent table name, query specifically for that table's FK
+            // Otherwise, query for any table with this FK column name
+            if ($parentTableName) {
+                $stmt = $this->pdo->prepare("
+                    SELECT REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
+                    FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+                    WHERE TABLE_SCHEMA = DATABASE()
+                    AND TABLE_NAME = :tableName
+                    AND COLUMN_NAME = :columnName
+                    AND REFERENCED_TABLE_NAME IS NOT NULL
+                    LIMIT 1
+                ");
+                $stmt->execute([
+                    'tableName' => $parentTableName,
+                    'columnName' => $nestedRel
+                ]);
+            } else {
+                // Fallback: query for any table with this FK column
+                $stmt = $this->pdo->prepare("
+                    SELECT REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
+                    FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+                    WHERE TABLE_SCHEMA = DATABASE()
+                    AND COLUMN_NAME = :columnName
+                    AND REFERENCED_TABLE_NAME IS NOT NULL
+                    LIMIT 1
+                ");
+                $stmt->execute(['columnName' => $nestedRel]);
+            }
+            
+            $fkInfo = $stmt->fetch(\PDO::FETCH_ASSOC);
+            
+            if ($fkInfo) {
+                $referencedTable = $fkInfo['REFERENCED_TABLE_NAME'];
+                $referencedColumn = $fkInfo['REFERENCED_COLUMN_NAME'] ?: 'id';
+                
+                // Load the related record
+                $stmt = $this->pdo->prepare(
+                    "SELECT * FROM `{$referencedTable}` WHERE `{$referencedColumn}` = ? LIMIT 1"
+                );
+                $stmt->execute([$fkValue]);
+                $relatedRecord = $stmt->fetch(\PDO::FETCH_ASSOC);
+                
+                if ($relatedRecord) {
+                    $record[$nestedRel] = $relatedRecord;
+                } else {
+                    $record[$nestedRel] = null;
+                }
+            }
+        } catch (\PDOException $e) {
+            // Silently fail - nested relationship loading is optional
+            error_log("Error loading nested relationship '{$nestedRel}': " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Load a single relationship for a record
+     * 
+     * @param array &$record Record to load relationship for
+     * @param string $relationshipName Relationship name (column name)
+     */
+    private function loadSingleRelationship(array &$record, string $relationshipName): void
+    {
+        $metadata = $this->getRelationshipMetadata($relationshipName);
+        
+        if (!$metadata) {
+            // Relationship not found, skip
+            return;
+        }
+
+        $fkColumn = $metadata['column'];
+        $referencedTable = $metadata['referenced_table'];
+        $referencedColumn = $metadata['referenced_column'];
+
+        // Check if foreign key value exists in record
+        if (!isset($record[$fkColumn])) {
+            return;
+        }
+
+        $fkValue = $record[$fkColumn];
+        
+        // Skip if null
+        if ($fkValue === null) {
+            return;
+        }
+
+        try {
+            $this->connect();
+            if (!$this->pdo) {
+                return;
+            }
+
+            // Determine relationship type
+            // If this table has the foreign key, it's a belongsTo relationship
+            // We need to check if the referenced table has a reverse foreign key
+            $relationshipType = $this->determineRelationshipType($referencedTable, $this->tableName);
+
+            if ($relationshipType === 'belongsTo') {
+                // Load parent record
+                $stmt = $this->pdo->prepare(
+                    "SELECT * FROM `{$referencedTable}` WHERE `{$referencedColumn}` = ? LIMIT 1"
+                );
+                $stmt->execute([$fkValue]);
+                $relatedRecord = $stmt->fetch(\PDO::FETCH_ASSOC);
+                
+                if ($relatedRecord) {
+                    $record[$relationshipName] = $relatedRecord;
+                } else {
+                    $record[$relationshipName] = null;
+                }
+            } elseif ($relationshipType === 'hasMany') {
+                // Load child records
+                // Find the foreign key column in the referenced table that points back to this table
+                $reverseFkColumn = $this->findReverseForeignKey($referencedTable, $this->tableName);
+                
+                if ($reverseFkColumn) {
+                    $stmt = $this->pdo->prepare(
+                        "SELECT * FROM `{$referencedTable}` WHERE `{$reverseFkColumn}` = ?"
+                    );
+                    $stmt->execute([$record['id'] ?? null]);
+                    $relatedRecords = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+                    $record[$relationshipName] = $relatedRecords;
+                }
+            }
+        } catch (\PDOException $e) {
+            // Silently fail - relationship loading is optional
+            error_log("Error loading relationship '{$relationshipName}': " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Determine relationship type between two tables
+     * 
+     * @param string $table1 First table
+     * @param string $table2 Second table
+     * @return string Relationship type ('belongsTo' or 'hasMany')
+     */
+    private function determineRelationshipType(string $table1, string $table2): string
+    {
+        // For now, if we're loading from current table to referenced table, it's belongsTo
+        // This is a simplified implementation - in a full ORM, we'd check both directions
+        return 'belongsTo';
+    }
+
+    /**
+     * Find reverse foreign key column in a table that references another table
+     * 
+     * @param string $tableName Table to search in
+     * @param string $referencedTable Table being referenced
+     * @return string|null Column name or null if not found
+     */
+    private function findReverseForeignKey(string $tableName, string $referencedTable): ?string
+    {
+        try {
+            $this->connect();
+            if (!$this->pdo) {
+                return null;
+            }
+
+            $stmt = $this->pdo->prepare("
+                SELECT COLUMN_NAME 
+                FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE 
+                WHERE TABLE_SCHEMA = DATABASE() 
+                AND TABLE_NAME = :tableName 
+                AND REFERENCED_TABLE_NAME = :referencedTable
+                LIMIT 1
+            ");
+            $stmt->execute([
+                'tableName' => $tableName,
+                'referencedTable' => $referencedTable
+            ]);
+            
+            $result = $stmt->fetch(\PDO::FETCH_ASSOC);
+            return $result ? $result['COLUMN_NAME'] : null;
+        } catch (\PDOException $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Load a specific relationship
+     * 
+     * @param string $relationshipName Relationship name (column name)
+     * @param mixed $fkValue Foreign key value
+     * @return array|null Related record(s) or null
+     */
+    public function loadRelationship(string $relationshipName, $fkValue)
+    {
+        $metadata = $this->getRelationshipMetadata($relationshipName);
+        
+        if (!$metadata) {
+            return null;
+        }
+
+        $referencedTable = $metadata['referenced_table'];
+        $referencedColumn = $metadata['referenced_column'];
+
+        try {
+            $this->connect();
+            if (!$this->pdo) {
+                return null;
+            }
+
+            $stmt = $this->pdo->prepare(
+                "SELECT * FROM `{$referencedTable}` WHERE `{$referencedColumn}` = ? LIMIT 1"
+            );
+            $stmt->execute([$fkValue]);
+            return $stmt->fetch(\PDO::FETCH_ASSOC) ?: null;
+        } catch (\PDOException $e) {
+            return null;
+        }
+    }
 
     public function findAll(Int $page = 1, Int $limit = 5)
     {
@@ -382,7 +931,128 @@ class DataBase
         return $filenames;
     }
 
+    /**
+     * Validate foreign key values exist in referenced tables
+     * 
+     * @param array $data Data containing foreign key values
+     * @param bool $isUpdate Whether this is an update operation
+     * @throws \InvalidArgumentException if foreign key validation fails
+     */
+    private function validateForeignKeys(array $data, bool $isUpdate = false): void
+    {
+        // Check if foreign key validation is enabled (can be disabled via env var)
+        $validateFks = filter_var($_ENV['REUT_VALIDATE_FOREIGN_KEYS'] ?? 'true', FILTER_VALIDATE_BOOLEAN);
+        if (!$validateFks) {
+            return; // Skip validation if disabled
+        }
 
+        $this->connect();
+        if (!$this->pdo) {
+            throw new \RuntimeException('Database connection failed');
+        }
+
+        foreach ($this->foreignKeys as $fk) {
+            $column = $fk['column'];
+            $referencedTable = $fk['referenced_table'];
+            $referencedColumn = $fk['referenced_column'];
+            
+            // Only validate if the foreign key column is present in data
+            if (!isset($data[$column])) {
+                // For updates, if column is not provided, skip validation
+                if ($isUpdate) {
+                    continue;
+                }
+                // For inserts, if column is nullable, skip validation
+                if (isset($this->columns[$column]) && 
+                    method_exists($this->columns[$column], 'isNullable') && 
+                    $this->columns[$column]->isNullable()) {
+                    continue;
+                }
+            }
+            
+            $fkValue = $data[$column] ?? null;
+            
+            // Skip validation if value is null and column allows null
+            if ($fkValue === null) {
+                if (isset($this->columns[$column]) && 
+                    method_exists($this->columns[$column], 'isNullable') && 
+                    $this->columns[$column]->isNullable()) {
+                    continue;
+                }
+            }
+            
+            // Validate foreign key value exists
+            try {
+                $stmt = $this->pdo->prepare(
+                    "SELECT COUNT(*) as count FROM `{$referencedTable}` WHERE `{$referencedColumn}` = ?"
+                );
+                $stmt->execute([$fkValue]);
+                $result = $stmt->fetch(\PDO::FETCH_ASSOC);
+                
+                if ($result && (int)$result['count'] === 0) {
+                    throw new \InvalidArgumentException(
+                        "Foreign key violation: {$column} value '{$fkValue}' does not exist in table '{$referencedTable}'"
+                    );
+                }
+            } catch (\PDOException $e) {
+                // If table doesn't exist, that's a different error
+                if (strpos($e->getMessage(), "doesn't exist") !== false) {
+                    throw new \InvalidArgumentException(
+                        "Referenced table '{$referencedTable}' does not exist. Please run migrations first."
+                    );
+                }
+                throw new \InvalidArgumentException(
+                    "Error validating foreign key '{$column}': " . $e->getMessage()
+                );
+            }
+        }
+    }
+
+    /**
+     * Validate required fields based on column definitions
+     * 
+     * @param array $data Data to validate
+     * @param bool $isUpdate Whether this is an update operation
+     * @throws \InvalidArgumentException if required fields are missing
+     */
+    private function validateRequiredFields(array $data, bool $isUpdate = false): void
+    {
+        // Always check for empty data
+        if (empty($data)) {
+            $operation = $isUpdate ? 'update' : 'insert';
+            throw new \InvalidArgumentException("Data array cannot be empty for {$operation} operation");
+        }
+
+        // Check if strictRequiredValidation property exists (from core)
+        $strictValidation = property_exists($this, 'strictRequiredValidation') ? $this->strictRequiredValidation : false;
+
+        // If strict validation is enabled OR this is an insert (not update), validate all required fields
+        if ($strictValidation || !$isUpdate) {
+            foreach ($this->columns as $columnName => $columnType) {
+                // Check if column is not nullable (required)
+                if (method_exists($columnType, 'isNullable') && !$columnType->isNullable()) {
+                    if (!isset($data[$columnName])) {
+                        throw new \InvalidArgumentException("Required field missing: {$columnName}");
+                    }
+                }
+            }
+        }
+        // If strict validation is false AND this is an update, allow partial updates (skip validation)
+    }
+
+    /**
+     * Validate SQL identifier (table/column name) to prevent SQL injection
+     * 
+     * @param string $identifier The identifier to validate
+     * @throws \InvalidArgumentException if identifier is invalid
+     */
+    private function validateIdentifier(string $identifier): void
+    {
+        // Valid SQL identifiers: start with letter/underscore, followed by letters, numbers, underscores
+        if (!preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/', $identifier)) {
+            throw new \InvalidArgumentException("Invalid SQL identifier: {$identifier}");
+        }
+    }
 
     public function findOne(array $criteria)
     {
@@ -416,6 +1086,16 @@ class DataBase
 
     public function addOne(array $data)
     {
+        // Validate required fields (always strict for inserts)
+        $this->validateRequiredFields($data, false);
+
+        // Validate foreign keys
+        $this->validateForeignKeys($data, false);
+
+        // Validate identifiers in data keys
+        foreach (array_keys($data) as $key) {
+            $this->validateIdentifier($key);
+        }
 
         $n = $this->connect();
 
@@ -491,6 +1171,25 @@ class DataBase
 
     public function update(array $dataToUpdate, array $updateCondition)
     {
+        // Validate update condition is not empty
+        if (empty($updateCondition)) {
+            throw new \InvalidArgumentException("Update condition cannot be empty");
+        }
+
+        // Validate required fields (respects strictRequiredValidation setting)
+        $this->validateRequiredFields($dataToUpdate, true);
+
+        // Validate foreign keys
+        $this->validateForeignKeys($dataToUpdate, true);
+
+        // Validate identifiers in data and condition keys
+        foreach (array_keys($dataToUpdate) as $key) {
+            $this->validateIdentifier($key);
+        }
+        foreach (array_keys($updateCondition) as $key) {
+            $this->validateIdentifier($key);
+        }
+
         $this->connect();
         if (!$this->pdo) {
             echo "Database connection failed";

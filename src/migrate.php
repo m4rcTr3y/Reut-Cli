@@ -100,6 +100,41 @@ try {
 
     usort($withRelations, fn($a, $b) => $a->getRelationshipCount() <=> $b->getRelationshipCount());
 
+    // Validate relationships before migration
+    echo "Validating relationships...\n";
+    $allTableInstances = array_merge($noRelations, $withRelations);
+    $validationErrors = [];
+    
+    foreach ($allTableInstances as $tableInstance) {
+        if ($tableInstance->hasRelationships()) {
+            try {
+                $errors = $tableInstance->validateForeignKeyRelationships($allTableInstances);
+                if (!empty($errors)) {
+                    $validationErrors = array_merge($validationErrors, $errors);
+                }
+            } catch (\Exception $e) {
+                $validationErrors[] = get_class($tableInstance) . ": " . $e->getMessage();
+            }
+        }
+    }
+    
+    // Check for circular dependencies
+    $circularDeps = detectCircularDependencies($allTableInstances);
+    if (!empty($circularDeps)) {
+        $validationErrors[] = "Circular dependencies detected: " . implode(", ", $circularDeps);
+    }
+    
+    if (!empty($validationErrors)) {
+        echo "\n❌ Relationship validation failed:\n";
+        foreach ($validationErrors as $error) {
+            echo "  - {$error}\n";
+        }
+        echo "\nPlease fix these errors before running migrations.\n";
+        exit(1);
+    }
+    
+    echo "✓ Relationship validation passed.\n\n";
+
     // Function to apply migrations for a table
     function applyMigration($baseDb, $tableInstance, $currentBatch, $dryRun = false): bool
     {
@@ -407,6 +442,78 @@ try {
         echo "Error Code: " . $e->getCode() . "\n";
     }
     exit(1);
+}
+
+/**
+ * Detect circular dependencies in foreign keys
+ * 
+ * @param array $tableInstances Array of DataBase instances
+ * @return array Array of circular dependency descriptions
+ */
+function detectCircularDependencies(array $tableInstances): array
+{
+    $circularDeps = [];
+    $graph = [];
+    
+    // Build dependency graph
+    foreach ($tableInstances as $instance) {
+        $tableName = $instance->tableName;
+        $graph[$tableName] = [];
+        
+        foreach ($instance->getForeignKeys() as $fk) {
+            $graph[$tableName][] = $fk['referenced_table'];
+        }
+    }
+    
+    // Detect cycles using DFS
+    foreach ($graph as $startTable => $dependencies) {
+        $visited = [];
+        $recStack = [];
+        $cycle = [];
+        
+        if (hasCycle($startTable, $graph, $visited, $recStack, $cycle)) {
+            if (!empty($cycle)) {
+                $circularDeps[] = implode(" -> ", $cycle) . " -> " . $cycle[0];
+            }
+        }
+    }
+    
+    return array_unique($circularDeps);
+}
+
+/**
+ * Check for cycles in dependency graph using DFS
+ */
+function hasCycle(string $node, array $graph, array &$visited, array &$recStack, array &$cycle): bool
+{
+    if (!isset($visited[$node])) {
+        $visited[$node] = false;
+    }
+    if (!isset($recStack[$node])) {
+        $recStack[$node] = false;
+    }
+    
+    $visited[$node] = true;
+    $recStack[$node] = true;
+    $cycle[] = $node;
+    
+    if (isset($graph[$node])) {
+        foreach ($graph[$node] as $neighbor) {
+            if (!isset($visited[$neighbor]) || !$visited[$neighbor]) {
+                if (hasCycle($neighbor, $graph, $visited, $recStack, $cycle)) {
+                    return true;
+                }
+            } elseif (isset($recStack[$neighbor]) && $recStack[$neighbor]) {
+                // Found a cycle - add the neighbor to complete the cycle
+                $cycle[] = $neighbor;
+                return true;
+            }
+        }
+    }
+    
+    $recStack[$node] = false;
+    array_pop($cycle);
+    return false;
 }
 
 /**

@@ -207,9 +207,18 @@ function generateReverseSql(string $sql, string $migrationName): ?string
     $sql = trim($sql);
     $sqlUpper = strtoupper($sql);
 
-    // CREATE TABLE -> DROP TABLE
+    // CREATE TABLE -> DROP TABLE (need to drop foreign keys first)
     if (preg_match('/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?`?(\w+)`?/i', $sql, $matches)) {
         $tableName = $matches[1];
+        
+        // Extract foreign key constraint names from the SQL
+        $fkConstraints = [];
+        if (preg_match_all('/CONSTRAINT\s+`?(\w+)`?\s+FOREIGN\s+KEY/i', $sql, $constraintMatches)) {
+            $fkConstraints = $constraintMatches[1];
+        }
+        
+        // Build DROP TABLE statement
+        // MySQL will automatically drop foreign keys when dropping the table
         return "DROP TABLE IF EXISTS `{$tableName}`";
     }
 
@@ -217,6 +226,41 @@ function generateReverseSql(string $sql, string $migrationName): ?string
     if (preg_match('/ALTER\s+TABLE\s+`?(\w+)`?\s+ADD\s+`?(\w+)`?/i', $sql, $matches)) {
         $tableName = $matches[1];
         $columnName = $matches[2];
+        
+        // Check if this column has a foreign key constraint
+        // If so, we need to drop the constraint first
+        $baseDb = new DataBase($GLOBALS['config'] ?? []);
+        try {
+            $baseDb->connect();
+            if ($baseDb->pdo) {
+                // Check for foreign key constraints on this column
+                $stmt = $baseDb->pdo->prepare("
+                    SELECT CONSTRAINT_NAME 
+                    FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE 
+                    WHERE TABLE_SCHEMA = DATABASE() 
+                    AND TABLE_NAME = :tableName 
+                    AND COLUMN_NAME = :columnName 
+                    AND REFERENCED_TABLE_NAME IS NOT NULL
+                ");
+                $stmt->execute(['tableName' => $tableName, 'columnName' => $columnName]);
+                $constraints = $stmt->fetchAll(\PDO::FETCH_COLUMN);
+                
+                $dropStatements = [];
+                foreach ($constraints as $constraint) {
+                    $dropStatements[] = "ALTER TABLE `{$tableName}` DROP FOREIGN KEY `{$constraint}`";
+                }
+                
+                if (!empty($dropStatements)) {
+                    // Return multiple statements separated by semicolons
+                    $dropStatements[] = "ALTER TABLE `{$tableName}` DROP COLUMN `{$columnName}`";
+                    return implode("; ", $dropStatements);
+                }
+            }
+        } catch (\Exception $e) {
+            // If we can't check constraints, just drop the column
+            // MySQL will handle constraint errors
+        }
+        
         return "ALTER TABLE `{$tableName}` DROP COLUMN `{$columnName}`";
     }
 

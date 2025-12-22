@@ -17,19 +17,34 @@ class DocsController
         // Load model metadata to get disabled routes and auth info
         $modelMetadata = $this->loadModelMetadata();
 
+        // Set cache headers to prevent browser caching
+        $cacheHeaders = [
+            'Cache-Control' => 'no-cache, no-store, must-revalidate',
+            'Pragma' => 'no-cache',
+            'Expires' => '0'
+        ];
+
         if ($format === 'json') {
             $response->getBody()->write(json_encode([
                 'endpoints' => $endpoints,
                 'models' => $modelMetadata,
                 'total' => count($endpoints)
             ], JSON_PRETTY_PRINT));
-            return $response->withHeader('Content-Type', 'application/json');
+            $response = $response->withHeader('Content-Type', 'application/json');
+            foreach ($cacheHeaders as $name => $value) {
+                $response = $response->withHeader($name, $value);
+            }
+            return $response;
         }
 
         // HTML format
         $html = $this->generateHtml($endpoints, $modelMetadata);
         $response->getBody()->write($html);
-        return $response->withHeader('Content-Type', 'text/html');
+        $response = $response->withHeader('Content-Type', 'text/html');
+        foreach ($cacheHeaders as $name => $value) {
+            $response = $response->withHeader($name, $value);
+        }
+        return $response;
     }
     
     private function loadModelMetadata(): array
