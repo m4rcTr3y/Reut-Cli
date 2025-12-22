@@ -8,8 +8,10 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use Psr\Log\LoggerInterface;
 use Reut\DB\Exceptions\ConnectionError;
+use Reut\DB\Exceptions\DatabaseQueryException;
 use Reut\DB\Types\ColumnType;
 use Reut\Support\ProjectPath;
+use Reut\DB\ConnectionPool;
 
 /**
  * Class Database
@@ -37,6 +39,10 @@ class DataBase
     public $results;
     public $disabledRoutes;
     public $fileFields;
+    
+    // Pagination support
+    public ?array $paginationInfo = null;
+    public ?int $totalCount = null;
 
     public array $columns = [];
     public array $protectedColumns = ['created_at', 'updated_at'];
@@ -109,23 +115,47 @@ class DataBase
      */
     public function connect()
     {
+        // Don't reconnect if already connected
+        if ($this->pdo !== null) {
+            return true;
+        }
+        
         try {
-            /*  $this->pdo = new \PDO(
-                "mysql:host={$this->config['host']};dbname={$this->config['dbname']};port=3306",
-                $this->config['username'],
-                $this->config['password']
-            );*/
-            $this->pdo = new \PDO(
-                "mysql:host={$this->config['host']};dbname={$this->config['dbname']}",
-                $this->config['username'],
-                $this->config['password']
-            );
-            $this->pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
-            $this->pdo->setAttribute(\PDO::ATTR_EMULATE_PREPARES, false);
+            // Use connection pool if enabled
+            $poolEnabled = filter_var($_ENV['REUT_DB_POOL_ENABLED'] ?? 'true', FILTER_VALIDATE_BOOLEAN);
+            
+            if ($poolEnabled) {
+                $pool = ConnectionPool::getInstance();
+                $this->pdo = $pool->getConnection($this->config);
+            } else {
+                // Fallback to direct connection creation (backward compatibility)
+                $this->pdo = new \PDO(
+                    "mysql:host={$this->config['host']};dbname={$this->config['dbname']}",
+                    $this->config['username'],
+                    $this->config['password']
+                );
+                $this->pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+                $this->pdo->setAttribute(\PDO::ATTR_EMULATE_PREPARES, false);
+            }
+            
             return true;
         } catch (\PDOException $e) {
-            // throw new Exception("Unk")
             throw new ConnectionError("\nFailed to connect to database");
+        }
+    }
+    
+    /**
+     * Release connection back to pool (called when done with database operations)
+     */
+    public function releaseConnection(): void
+    {
+        if ($this->pdo !== null) {
+            $poolEnabled = filter_var($_ENV['REUT_DB_POOL_ENABLED'] ?? 'true', FILTER_VALIDATE_BOOLEAN);
+            if ($poolEnabled) {
+                $pool = ConnectionPool::getInstance();
+                $pool->releaseConnection($this->pdo, $this->config);
+            }
+            $this->pdo = null;
         }
     }
 
@@ -520,12 +550,32 @@ class DataBase
                     !array_key_exists(0, $this->results);
         
         if ($isSingle) {
-            // Single result (associative array, not indexed)
+            // Single result (associative array, not indexed) - use sequential loading
             $this->loadRelationshipsForRecord($this->results, $relationships);
         } else {
-            // Multiple results (indexed array)
-            foreach ($this->results as &$record) {
-                $this->loadRelationshipsForRecord($record, $relationships);
+            // Multiple results (indexed array) - use batch loading for efficiency
+            $recordCount = count($this->results);
+            
+            // Batch loading only when we have multiple records and all have required fields
+            $canUseBatch = $recordCount > 1;
+            if ($canUseBatch) {
+                // Check if all records have required fields (id for hasMany, FK columns for belongsTo)
+                foreach ($this->results as $record) {
+                    if (!is_array($record)) {
+                        $canUseBatch = false;
+                        break;
+                    }
+                }
+            }
+            
+            if ($canUseBatch) {
+                // Use batch loading for efficiency
+                $this->loadRelationshipsBatch($this->results, $relationships);
+            } else {
+                // Fallback to sequential loading (backward compatibility)
+                foreach ($this->results as &$record) {
+                    $this->loadRelationshipsForRecord($record, $relationships);
+                }
             }
         }
 
@@ -942,6 +992,258 @@ class DataBase
             return null;
         }
     }
+    
+    /**
+     * Batch load relationships for multiple records (optimizes N+1 queries)
+     * Collects all FK values and loads relationships in batches using WHERE IN
+     * 
+     * @param array $records Array of records to load relationships for
+     * @param array $relationships Array of relationship definitions
+     */
+    private function loadRelationshipsBatch(array &$records, array $relationships): void
+    {
+        if (empty($records)) {
+            return;
+        }
+        
+        // Separate belongsTo and hasMany relationships
+        $belongsToRelationships = [];
+        $hasManyRelationships = [];
+        
+        foreach ($relationships as $relationship) {
+            if (is_array($relationship) && count($relationship) >= 2) {
+                $alias = trim($relationship[0]);
+                $fkColumn = trim($relationship[1]);
+                
+                // Check if this FK column exists in current table (belongsTo) or in another table (hasMany)
+                $metadata = $this->getRelationshipMetadata($fkColumn);
+                $hasManyTable = null;
+                
+                if (!$metadata) {
+                    // FK column not in current table - check if it's in another table pointing to this table
+                    $hasManyTable = $this->findTableWithForeignKey($fkColumn, $this->tableName);
+                }
+                
+                if ($hasManyTable) {
+                    $hasManyRelationships[] = ['alias' => $alias, 'fkColumn' => $fkColumn, 'table' => $hasManyTable];
+                } else if ($metadata) {
+                    $belongsToRelationships[] = [
+                        'alias' => $alias,
+                        'fkColumn' => $fkColumn,
+                        'metadata' => $metadata
+                    ];
+                }
+            } else if (is_string($relationship)) {
+                // Old format: just FK column name (belongsTo)
+                $metadata = $this->getRelationshipMetadata($relationship);
+                if ($metadata) {
+                    $belongsToRelationships[] = [
+                        'alias' => $relationship,
+                        'fkColumn' => $relationship,
+                        'metadata' => $metadata
+                    ];
+                }
+            }
+        }
+        
+        // Batch load belongsTo relationships
+        if (!empty($belongsToRelationships)) {
+            $this->batchLoadBelongsToRelationships($records, $belongsToRelationships);
+        }
+        
+        // Batch load hasMany relationships
+        if (!empty($hasManyRelationships)) {
+            $this->batchLoadHasManyRelationships($records, $hasManyRelationships);
+        }
+    }
+    
+    /**
+     * Batch load belongsTo relationships using WHERE IN queries
+     */
+    private function batchLoadBelongsToRelationships(array &$records, array $relationships): void
+    {
+        try {
+            $this->connect();
+            if (!$this->pdo) {
+                return;
+            }
+            
+            // Group relationships by referenced table for efficient batch loading
+            $relationshipsByTable = [];
+            foreach ($relationships as $rel) {
+                $table = $rel['metadata']['referenced_table'];
+                if (!isset($relationshipsByTable[$table])) {
+                    $relationshipsByTable[$table] = [];
+                }
+                $relationshipsByTable[$table][] = $rel;
+            }
+            
+            // Load each table's relationships in batch
+            foreach ($relationshipsByTable as $table => $tableRelationships) {
+                // Collect all FK values for this table
+                $fkValues = [];
+                $fkColumnMap = []; // Map FK value to record index and FK column
+                
+                foreach ($tableRelationships as $rel) {
+                    $fkColumn = $rel['fkColumn'];
+                    $actualFkColumn = $rel['metadata']['column'];
+                    $referencedColumn = $rel['metadata']['referenced_column'];
+                    
+                    foreach ($records as $index => &$record) {
+                        if (isset($record[$actualFkColumn]) && $record[$actualFkColumn] !== null) {
+                            $fkValue = $record[$actualFkColumn];
+                            if (!in_array($fkValue, $fkValues)) {
+                                $fkValues[] = $fkValue;
+                            }
+                            if (!isset($fkColumnMap[$fkValue])) {
+                                $fkColumnMap[$fkValue] = [];
+                            }
+                            $fkColumnMap[$fkValue][] = [
+                                'index' => $index,
+                                'fkColumn' => $actualFkColumn,
+                                'alias' => $rel['alias'],
+                                'referencedColumn' => $referencedColumn
+                            ];
+                        }
+                    }
+                }
+                
+                if (empty($fkValues)) {
+                    continue;
+                }
+                
+                // Batch load related records using WHERE IN
+                $batchSize = 100; // Limit batch size to avoid SQL parameter limits
+                $fkBatches = array_chunk($fkValues, $batchSize);
+                
+                foreach ($fkBatches as $fkBatch) {
+                    $placeholders = implode(',', array_fill(0, count($fkBatch), '?'));
+                    $stmt = $this->pdo->prepare(
+                        "SELECT * FROM `{$table}` WHERE `{$referencedColumn}` IN ({$placeholders})"
+                    );
+                    $stmt->execute($fkBatch);
+                    $relatedRecords = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+                    
+                    // Create lookup map by referenced column value
+                    $lookupMap = [];
+                    foreach ($relatedRecords as $relatedRecord) {
+                        $lookupMap[$relatedRecord[$referencedColumn]] = $relatedRecord;
+                    }
+                    
+                    // Map related records back to original records
+                    foreach ($fkBatch as $fkValue) {
+                        if (isset($fkColumnMap[$fkValue])) {
+                            foreach ($fkColumnMap[$fkValue] as $mapping) {
+                                $recordIndex = $mapping['index'];
+                                $alias = $mapping['alias'];
+                                $actualFkColumn = $mapping['fkColumn'];
+                                
+                                if (isset($lookupMap[$fkValue])) {
+                                    $records[$recordIndex][$alias] = $lookupMap[$fkValue];
+                                    // Remove FK column if using alias
+                                    if ($alias !== $actualFkColumn && isset($records[$recordIndex][$actualFkColumn])) {
+                                        unset($records[$recordIndex][$actualFkColumn]);
+                                    }
+                                } else {
+                                    $records[$recordIndex][$alias] = null;
+                                    // Remove FK column even if relationship is null
+                                    if ($alias !== $actualFkColumn && isset($records[$recordIndex][$actualFkColumn])) {
+                                        unset($records[$recordIndex][$actualFkColumn]);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (\PDOException $e) {
+            error_log("Error batch loading belongsTo relationships: " . $e->getMessage());
+            // Fallback to sequential loading on error
+            foreach ($records as &$record) {
+                foreach ($relationships as $rel) {
+                    if (is_array($rel)) {
+                        $this->loadSingleRelationship($record, $rel['fkColumn'], $rel['alias']);
+                    } else {
+                        $this->loadSingleRelationship($record, $rel, null);
+                    }
+                }
+            }
+        }
+    }
+    
+    /**
+     * Batch load hasMany relationships using WHERE IN queries
+     */
+    private function batchLoadHasManyRelationships(array &$records, array $relationships): void
+    {
+        try {
+            $this->connect();
+            if (!$this->pdo) {
+                return;
+            }
+            
+            // Collect all parent IDs
+            $parentIds = [];
+            foreach ($records as $index => $record) {
+                if (isset($record['id']) && $record['id'] !== null) {
+                    $parentIds[] = $record['id'];
+                }
+            }
+            
+            if (empty($parentIds)) {
+                return;
+            }
+            
+            // Load relationships for each relationship type
+            foreach ($relationships as $rel) {
+                $table = $rel['table'];
+                $fkColumn = $rel['fkColumn'];
+                $alias = $rel['alias'];
+                
+                // Batch load related records using WHERE IN
+                $batchSize = 100; // Limit batch size to avoid SQL parameter limits
+                $idBatches = array_chunk($parentIds, $batchSize);
+                
+                $allRelatedRecords = [];
+                foreach ($idBatches as $idBatch) {
+                    $placeholders = implode(',', array_fill(0, count($idBatch), '?'));
+                    $stmt = $this->pdo->prepare(
+                        "SELECT * FROM `{$table}` WHERE `{$fkColumn}` IN ({$placeholders})"
+                    );
+                    $stmt->execute($idBatch);
+                    $relatedRecords = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+                    $allRelatedRecords = array_merge($allRelatedRecords, $relatedRecords);
+                }
+                
+                // Group related records by FK value
+                $relatedByFk = [];
+                foreach ($allRelatedRecords as $relatedRecord) {
+                    $fkValue = $relatedRecord[$fkColumn];
+                    if (!isset($relatedByFk[$fkValue])) {
+                        $relatedByFk[$fkValue] = [];
+                    }
+                    $relatedByFk[$fkValue][] = $relatedRecord;
+                }
+                
+                // Map related records back to original records
+                foreach ($records as &$record) {
+                    if (isset($record['id'])) {
+                        $record[$alias] = $relatedByFk[$record['id']] ?? [];
+                    } else {
+                        $record[$alias] = [];
+                    }
+                }
+            }
+        } catch (\PDOException $e) {
+            error_log("Error batch loading hasMany relationships: " . $e->getMessage());
+            // Fallback to sequential loading on error
+            foreach ($records as &$record) {
+                foreach ($relationships as $rel) {
+                    $this->loadHasManyRelationship($record, $rel['table'], $rel['fkColumn'], $rel['alias']);
+                }
+            }
+        }
+    }
 
     /**
      * Load a hasMany relationship (child records)
@@ -1047,39 +1349,99 @@ class DataBase
         }
     }
 
-    public function findAll(Int $page = 1, Int $limit = 5)
+    public function findAll(Int $page = 1, Int $limit = 5, ?int $dbLimit = null, ?int $dbOffset = null)
     {
         $n = $this->connect();
         if (!$this->pdo) {
             return $n;
         }
         try {
-
-            $stmt = $this->pdo->prepare("SELECT * FROM {$this->tableName}");
+            // Backward compatibility: if results already loaded, return as-is
+            if (!empty($this->results) && $dbLimit === null && $dbOffset === null) {
+                return $this;
+            }
+            
+            // If pagination is requested, store pagination info for paginate() method
+            if ($dbLimit !== null && $dbLimit > 0) {
+                $calculatedPage = $dbOffset !== null && $dbOffset > 0 
+                    ? (int)(($dbOffset / $dbLimit) + 1) 
+                    : 1;
+                $this->paginationInfo = [
+                    'page' => $calculatedPage,
+                    'limit' => $dbLimit,
+                    'offset' => $dbOffset ?? 0
+                ];
+                
+                // Calculate total count for pagination (efficient COUNT query)
+                $countQuery = "SELECT COUNT(*) as count FROM `{$this->tableName}`";
+                $countStmt = $this->pdo->prepare($countQuery);
+                $countStmt->execute();
+                $countResult = $countStmt->fetch(\PDO::FETCH_ASSOC);
+                $this->totalCount = (int)($countResult['count'] ?? 0);
+            }
+            
+            // Build query with optional LIMIT/OFFSET
+            $query = "SELECT * FROM `{$this->tableName}`";
+            if ($dbLimit !== null && $dbLimit > 0) {
+                $query .= " LIMIT " . (int)$dbLimit;
+                if ($dbOffset !== null && $dbOffset > 0) {
+                    $query .= " OFFSET " . (int)$dbOffset;
+                }
+            }
+            
+            $stmt = $this->pdo->prepare($query);
             $stmt->execute();
             $this->results = $stmt->fetchAll(\PDO::FETCH_ASSOC);
             return $this;
         } catch (\PDOException $e) {
-            return 'errror' . $e->getMessage();
+            $errorInfo = $e->errorInfo ?? ['', $e->getCode(), $e->getMessage()];
+            throw new DatabaseQueryException(
+                "Failed to fetch records: " . $e->getMessage(),
+                (int)$e->getCode(),
+                $e,
+                $query ?? "SELECT * FROM `{$this->tableName}`",
+                [],
+                $errorInfo
+            );
         }
     }
 
     public function paginate(Int $page = 1, Int $limit = 20)
     {
+        // Backward compatibility: if results already loaded and no pagination info, use in-memory pagination
+        if ($this->results && $this->paginationInfo === null && $this->totalCount === null) {
+            $total = ceil(count($this->results) / $limit);
+            $offset = ($page - 1) * $limit;
+            // Use array_slice which preserves array structure including nested relationships
+            $paginatedResults = array_slice($this->results, $offset, $limit);
+
+            return [
+                'results' => $paginatedResults,
+                'totalPages' => $total,
+                'page' => $page,
+                'limit' => $limit,
+                'totalItems' => count($this->results)
+            ];
+        }
+        
+        // Database-level pagination: results already limited, use stored pagination info
         if (!$this->results) {
             return ['results' => [], 'totalPages' => 0, 'page' => 1, 'limit' => $limit, 'totalItems' => 0];
         }
-
-        $total = ceil(count($this->results) / $limit);
-        $offset = ($page - 1) * $limit;
-        $paginatedResults = array_slice($this->results, $offset, $limit);
+        
+        // Use stored pagination info if available, otherwise use provided params
+        $currentPage = $this->paginationInfo['page'] ?? $page;
+        $currentLimit = $this->paginationInfo['limit'] ?? $limit;
+        $totalItems = $this->totalCount ?? count($this->results);
+        
+        $totalPages = $currentLimit > 0 ? ceil($totalItems / $currentLimit) : 0;
 
         return [
-            'results' => $paginatedResults,
-            'totalPages' => $total,
-            'page' => $page,
-            'limit' => $limit,
-            'totalItems' => count($this->results)
+            'results' => $this->results,
+            'totalPages' => $totalPages,
+            'page' => $currentPage,
+            'limit' => $currentLimit,
+            'totalItems' => $totalItems
         ];
     }
 
