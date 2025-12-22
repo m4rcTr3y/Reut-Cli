@@ -533,6 +533,88 @@ class DataBase
     }
 
     /**
+     * Load relationship counts (efficient COUNT queries, doesn't load data)
+     * 
+     * @param array|string $relationships Relationship aliases to count (e.g., [['comments', 'post_id']])
+     * @return $this
+     */
+    public function withCount($relationships)
+    {
+        if (empty($this->results)) {
+            return $this;
+        }
+
+        // Normalize relationships to array
+        if (is_string($relationships)) {
+            $relationships = array_map('trim', explode(',', $relationships));
+        }
+
+        if (empty($relationships)) {
+            return $this;
+        }
+
+        // Check if results is single record or array
+        $isSingle = is_array($this->results) && 
+                    !empty($this->results) && 
+                    !isset($this->results[0]) && 
+                    !array_key_exists(0, $this->results);
+        
+        if ($isSingle) {
+            // Single result
+            $this->loadRelationshipCountsForRecord($this->results, $relationships);
+        } else {
+            // Multiple results
+            foreach ($this->results as &$record) {
+                $this->loadRelationshipCountsForRecord($record, $relationships);
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * Load relationship counts for a single record
+     * 
+     * @param array &$record Record to load counts for
+     * @param array $relationships Relationship aliases to count
+     */
+    private function loadRelationshipCountsForRecord(array &$record, array $relationships): void
+    {
+        foreach ($relationships as $relationship) {
+            // Format: [alias, fkColumn]
+            if (is_array($relationship) && count($relationship) >= 2) {
+                $alias = trim($relationship[0]);
+                $fkColumn = trim($relationship[1]);
+                
+                // Find table with this FK column pointing to current table
+                $hasManyTable = $this->findTableWithForeignKey($fkColumn, $this->tableName);
+                
+                if ($hasManyTable && isset($record['id'])) {
+                    try {
+                        $this->connect();
+                        if (!$this->pdo) {
+                            continue;
+                        }
+
+                        // Efficient COUNT query - doesn't load data
+                        $stmt = $this->pdo->prepare(
+                            "SELECT COUNT(*) as count FROM `{$hasManyTable}` WHERE `{$fkColumn}` = ?"
+                        );
+                        $stmt->execute([$record['id']]);
+                        $result = $stmt->fetch(\PDO::FETCH_ASSOC);
+                        $record[$alias . '_count'] = (int)($result['count'] ?? 0);
+                    } catch (\PDOException $e) {
+                        error_log("Error loading count for relationship '{$alias}': " . $e->getMessage());
+                        $record[$alias . '_count'] = 0;
+                    }
+                } else {
+                    $record[$alias . '_count'] = 0;
+                }
+            }
+        }
+    }
+
+    /**
      * Load relationships for a single record
      * 
      * @param array &$record Record to load relationships for
@@ -541,42 +623,67 @@ class DataBase
     private function loadRelationshipsForRecord(array &$record, array $relationships): void
     {
         foreach ($relationships as $relationship) {
-            $relationship = trim($relationship);
-            
-            // Check if this is a nested relationship (e.g., 'post_id.user_id' or 'post.user')
-            if (strpos($relationship, '.') !== false) {
-                $parts = explode('.', $relationship, 2);
-                $parentRel = trim($parts[0]);
-                $nestedRel = trim($parts[1]);
+            // Check if it's new format (array with [alias, fkColumn]) or old format (string)
+            if (is_array($relationship) && count($relationship) === 2) {
+                // New format: [alias, fkColumn]
+                [$alias, $fkColumn] = $relationship;
+                $alias = trim($alias);
+                $fkColumn = trim($fkColumn);
                 
-                // Load parent relationship first (only if not already loaded as an object)
-                // Check if parentRel is already an array (loaded relationship) or still an integer (FK value)
-                if (!isset($record[$parentRel]) || !is_array($record[$parentRel]) || (isset($record[$parentRel]) && is_numeric($record[$parentRel]))) {
-                    $this->loadSingleRelationship($record, $parentRel);
-                }
-                
-                // Then load nested relationship if parent was loaded
-                if (isset($record[$parentRel]) && $record[$parentRel] !== null && is_array($record[$parentRel])) {
-                    if (isset($record[$parentRel][0]) && is_numeric(key($record[$parentRel]))) {
-                        // HasMany relationship (array of records)
-                        foreach ($record[$parentRel] as &$parentRecord) {
-                            if (is_array($parentRecord)) {
-                                // Get the table name from the parent relationship metadata
-                                $parentMetadata = $this->getRelationshipMetadata($parentRel);
-                                $parentTable = $parentMetadata ? $parentMetadata['referenced_table'] : null;
-                                $this->loadNestedRelationshipForRecord($parentRecord, $nestedRel, $parentTable);
-                            }
-                        }
-                    } else {
-                        // BelongsTo relationship (single record object)
-                        // Get the table name from the parent relationship metadata
-                        $parentMetadata = $this->getRelationshipMetadata($parentRel);
-                        $parentTable = $parentMetadata ? $parentMetadata['referenced_table'] : null;
-                        $this->loadNestedRelationshipForRecord($record[$parentRel], $nestedRel, $parentTable);
-                    }
+                // Check if this is a nested relationship (e.g., ['post.user', 'post_id'])
+                if (strpos($alias, '.') !== false) {
+                    // Handle nested relationships with aliases
+                    $parts = explode('.', $alias, 2);
+                    $parentAlias = trim($parts[0]);
+                    $nestedRel = trim($parts[1]);
+                    
+                    // For nested relationships, we need to find the parent FK column first
+                    // This is complex, so for now we'll use the old approach
+                    // TODO: Implement proper nested relationship aliasing
+                    $this->loadSingleRelationship($record, $fkColumn, $alias);
+                } else {
+                    // Simple relationship with alias
+                    $this->loadSingleRelationship($record, $fkColumn, $alias);
                 }
             } else {
-                $this->loadSingleRelationship($record, $relationship);
+                // Old format: string (backward compatibility)
+                $relationship = is_string($relationship) ? trim($relationship) : (string)$relationship;
+                
+                // Check if this is a nested relationship (e.g., 'post_id.user_id' or 'post.user')
+                if (strpos($relationship, '.') !== false) {
+                    $parts = explode('.', $relationship, 2);
+                    $parentRel = trim($parts[0]);
+                    $nestedRel = trim($parts[1]);
+                    
+                    // Load parent relationship first (only if not already loaded as an object)
+                    // Check if parentRel is already an array (loaded relationship) or still an integer (FK value)
+                    if (!isset($record[$parentRel]) || !is_array($record[$parentRel]) || (isset($record[$parentRel]) && is_numeric($record[$parentRel]))) {
+                        $this->loadSingleRelationship($record, $parentRel);
+                    }
+                    
+                    // Then load nested relationship if parent was loaded
+                    if (isset($record[$parentRel]) && $record[$parentRel] !== null && is_array($record[$parentRel])) {
+                        if (isset($record[$parentRel][0]) && is_numeric(key($record[$parentRel]))) {
+                            // HasMany relationship (array of records)
+                            foreach ($record[$parentRel] as &$parentRecord) {
+                                if (is_array($parentRecord)) {
+                                    // Get the table name from the parent relationship metadata
+                                    $parentMetadata = $this->getRelationshipMetadata($parentRel);
+                                    $parentTable = $parentMetadata ? $parentMetadata['referenced_table'] : null;
+                                    $this->loadNestedRelationshipForRecord($parentRecord, $nestedRel, $parentTable);
+                                }
+                            }
+                        } else {
+                            // BelongsTo relationship (single record object)
+                            // Get the table name from the parent relationship metadata
+                            $parentMetadata = $this->getRelationshipMetadata($parentRel);
+                            $parentTable = $parentMetadata ? $parentMetadata['referenced_table'] : null;
+                            $this->loadNestedRelationshipForRecord($record[$parentRel], $nestedRel, $parentTable);
+                        }
+                    }
+                } else {
+                    $this->loadSingleRelationship($record, $relationship);
+                }
             }
         }
     }
@@ -666,25 +773,34 @@ class DataBase
      * @param array &$record Record to load relationship for
      * @param string $relationshipName Relationship name (column name)
      */
-    private function loadSingleRelationship(array &$record, string $relationshipName): void
+    /**
+     * Load a single relationship for a record
+     * 
+     * @param array &$record The record to load the relationship for
+     * @param string $fkColumn The foreign key column name (or relationship name for backward compat)
+     * @param string|null $alias Optional alias name. If provided, relationship is stored under alias and FK column is removed from results
+     */
+    private function loadSingleRelationship(array &$record, string $fkColumn, ?string $alias = null): void
     {
-        $metadata = $this->getRelationshipMetadata($relationshipName);
+        // If alias is provided, use fkColumn to find metadata, otherwise use fkColumn as relationship name (backward compat)
+        $relationshipName = $alias ?? $fkColumn;
+        $metadata = $this->getRelationshipMetadata($fkColumn);
         
         if (!$metadata) {
             // Relationship not found, skip
             return;
         }
 
-        $fkColumn = $metadata['column'];
+        $actualFkColumn = $metadata['column'];
         $referencedTable = $metadata['referenced_table'];
         $referencedColumn = $metadata['referenced_column'];
 
         // Check if foreign key value exists in record
-        if (!isset($record[$fkColumn])) {
+        if (!isset($record[$actualFkColumn])) {
             return;
         }
 
-        $fkValue = $record[$fkColumn];
+        $fkValue = $record[$actualFkColumn];
         
         // Skip if null
         if ($fkValue === null) {
@@ -711,9 +827,19 @@ class DataBase
                 $relatedRecord = $stmt->fetch(\PDO::FETCH_ASSOC);
                 
                 if ($relatedRecord) {
+                    // Store under alias if provided, otherwise under relationship name (backward compat)
                     $record[$relationshipName] = $relatedRecord;
+                    
+                    // If using alias, remove FK column from results
+                    if ($alias !== null && isset($record[$actualFkColumn])) {
+                        unset($record[$actualFkColumn]);
+                    }
                 } else {
                     $record[$relationshipName] = null;
+                    // If using alias, remove FK column from results even if relationship is null
+                    if ($alias !== null && isset($record[$actualFkColumn])) {
+                        unset($record[$actualFkColumn]);
+                    }
                 }
             } elseif ($relationshipType === 'hasMany') {
                 // Load child records
@@ -727,6 +853,12 @@ class DataBase
                     $stmt->execute([$record['id'] ?? null]);
                     $relatedRecords = $stmt->fetchAll(\PDO::FETCH_ASSOC);
                     $record[$relationshipName] = $relatedRecords;
+                    
+                    // For hasMany, we typically don't remove the FK column as it's not a direct FK
+                    // But if alias is provided and it matches a column, we can remove it
+                    if ($alias !== null && isset($record[$actualFkColumn]) && $actualFkColumn !== 'id') {
+                        unset($record[$actualFkColumn]);
+                    }
                 }
             }
         } catch (\PDOException $e) {
@@ -738,15 +870,112 @@ class DataBase
     /**
      * Determine relationship type between two tables
      * 
-     * @param string $table1 First table
-     * @param string $table2 Second table
+     * @param string $referencedTable The table we're trying to load from
+     * @param string $currentTable The current table (this table)
      * @return string Relationship type ('belongsTo' or 'hasMany')
      */
-    private function determineRelationshipType(string $table1, string $table2): string
+    private function determineRelationshipType(string $referencedTable, string $currentTable): string
     {
-        // For now, if we're loading from current table to referenced table, it's belongsTo
-        // This is a simplified implementation - in a full ORM, we'd check both directions
-        return 'belongsTo';
+        try {
+            $this->connect();
+            if (!$this->pdo) {
+                return 'belongsTo'; // Default fallback
+            }
+
+            // Check if the referenced table has a foreign key pointing back to current table
+            // If yes, it's a hasMany relationship (referenced table has FK to current table)
+            // If no, it's a belongsTo relationship (current table has FK to referenced table)
+            $stmt = $this->pdo->prepare("
+                SELECT COLUMN_NAME 
+                FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE 
+                WHERE TABLE_SCHEMA = DATABASE() 
+                AND TABLE_NAME = :referencedTable 
+                AND REFERENCED_TABLE_NAME = :currentTable
+                LIMIT 1
+            ");
+            $stmt->execute([
+                'referencedTable' => $referencedTable,
+                'currentTable' => $currentTable
+            ]);
+            
+            $result = $stmt->fetch(\PDO::FETCH_ASSOC);
+            // If referenced table has FK pointing to current table, it's hasMany
+            return $result ? 'hasMany' : 'belongsTo';
+        } catch (\PDOException $e) {
+            // Default to belongsTo on error
+            return 'belongsTo';
+        }
+    }
+
+    /**
+     * Find table that has a foreign key column pointing to the current table
+     * Used for detecting hasMany relationships
+     * 
+     * @param string $fkColumnName The foreign key column name to search for
+     * @param string $currentTable The current table name
+     * @return string|null Table name or null if not found
+     */
+    private function findTableWithForeignKey(string $fkColumnName, string $currentTable): ?string
+    {
+        try {
+            $this->connect();
+            if (!$this->pdo) {
+                return null;
+            }
+
+            $stmt = $this->pdo->prepare("
+                SELECT TABLE_NAME 
+                FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE 
+                WHERE TABLE_SCHEMA = DATABASE() 
+                AND COLUMN_NAME = :fkColumnName 
+                AND REFERENCED_TABLE_NAME = :currentTable
+                LIMIT 1
+            ");
+            $stmt->execute([
+                'fkColumnName' => $fkColumnName,
+                'currentTable' => $currentTable
+            ]);
+            
+            $result = $stmt->fetch(\PDO::FETCH_ASSOC);
+            return $result ? $result['TABLE_NAME'] : null;
+        } catch (\PDOException $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Load a hasMany relationship (child records)
+     * 
+     * @param array &$record The record to load the relationship for
+     * @param string $tableName The table name containing the FK (e.g., 'Comments')
+     * @param string $fkColumn The foreign key column name in that table (e.g., 'post_id')
+     * @param string $alias The alias to store the relationship under
+     */
+    private function loadHasManyRelationship(array &$record, string $tableName, string $fkColumn, string $alias): void
+    {
+        try {
+            $this->connect();
+            if (!$this->pdo) {
+                return;
+            }
+
+            if (!isset($record['id'])) {
+                return;
+            }
+
+            // Load all records from the table where fkColumn = current record's id
+            $stmt = $this->pdo->prepare(
+                "SELECT * FROM `{$tableName}` WHERE `{$fkColumn}` = ?"
+            );
+            $stmt->execute([$record['id']]);
+            $relatedRecords = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            $record[$alias] = $relatedRecords;
+        } catch (\PDOException $e) {
+            // Silently fail - relationship loading is optional
+            error_log("Error loading hasMany relationship '{$alias}': " . $e->getMessage());
+            $record[$alias] = [];
+            $record[$alias . '_count'] = 0;
+        }
     }
 
     /**
