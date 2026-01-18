@@ -15,7 +15,7 @@ use PDO;
  * 3. Test user credential prompts and storage
  * 4. CORS middleware integration in generated projects
  * 5. Post-migration user creation
- * 6. Version command showing v1.4.0
+ * 6. Version command showing v1.4.2
  * 
  * Database credentials:
  * - Username: root
@@ -85,15 +85,15 @@ class CliCommandTest extends TestCase
     }
 
     /**
-     * Test CLI version command shows v1.4.0
+     * Test CLI version command shows v1.4.2
      */
     public function testCliVersionCommand(): void
     {
         $output = $this->runCliCommand(['-v']);
-        // Check for version 1.4.0 (might be shown as 1.4.0 or v1.4.0)
+        // Check for version 1.4.2 (might be shown as 1.4.2 or v1.4.2)
         $this->assertTrue(
-            strpos($output, '1.4.0') !== false || strpos($output, 'v1.4.0') !== false,
-            'Version command should show 1.4.0. Got: ' . substr($output, 0, 200)
+            strpos($output, '1.4.2') !== false || strpos($output, 'v1.4.2') !== false,
+            'Version command should show 1.4.2. Got: ' . substr($output, 0, 200)
         );
     }
 

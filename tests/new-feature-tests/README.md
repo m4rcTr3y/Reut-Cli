@@ -52,7 +52,7 @@ Tests are organized by version to track when features were introduced:
   - Uses test database: `test_db_v14` (root/root@1234)
 
 - **CliCommandTest.php** - Tests for CLI command functionality (v1.4):
-  - CLI version command (v1.4.0)
+  - CLI version command (v1.4.2)
   - CORS middleware integration in generated projects
   - CORS configuration in `.env` file
   - Auth configuration file generation

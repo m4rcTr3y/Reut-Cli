@@ -116,7 +116,7 @@ php vendor/bin/phpunit tests/new-feature-tests/v1.4/ --filter testName
 The `CliCommandTest.php` file tests the CLI command functionality for v1.4:
 
 ### 1. `testCliVersionCommand`
-- Verifies CLI version command shows v1.4.0
+- Verifies CLI version command shows v1.4.2
 
 ### 2. `testGeneratedIndexIncludesCorsMiddleware`
 - Tests that generated `index.php` includes `CorsMiddleware` import and instantiation
