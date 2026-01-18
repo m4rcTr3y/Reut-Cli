@@ -4,7 +4,8 @@
     "type": "library",
     "autoload": {
         "psr-4": {
-            "M4rc\\ReutCli\\": "src/"
+            "M4rc\\ReutCli\\": "src/",
+            "Reut\\CLI\\": "src/"
         }
     },
     "license": "MIT",

@@ -32,7 +32,23 @@ use Reut\Middleware\CsrfMiddleware;
 
 // Add security middlewares
 \$app->add(new RateLimitMiddleware(\$app));
-\$app->add(new CsrfMiddleware(\$app));                
+\$app->add(new CsrfMiddleware(\$app));
+
+// Disable cache for /dev and /schema routes
+\$app->add(function (Request \$request, \$handler) {
+    \$path = \$request->getUri()->getPath();
+    
+    // Disable caching for dev and schema routes
+    if (strpos(\$path, '/dev') === 0 || strpos(\$path, '/schema') === 0) {
+        \$response = \$handler->handle(\$request);
+        return \$response
+            ->withHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
+            ->withHeader('Pragma', 'no-cache')
+            ->withHeader('Expires', '0');
+    }
+    
+    return \$handler->handle(\$request);
+});
 
 \$app->add(function (Request \$request, \$handler) {
     \$method = \$request->getMethod();

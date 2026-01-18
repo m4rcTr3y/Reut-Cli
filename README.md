@@ -114,7 +114,7 @@ If you see a stability error, install the development version:
 composer global require m4rc/reut_cli:dev-main
 ```
 
-> **Note:** Current version (`v1.4.2`). See [Packagist](https://packagist.org/packages/m4rc/reut_cli).
+> **Note:** Current version (`v1.4.9`). See [Packagist](https://packagist.org/packages/m4rc/reut_cli).
 
 ### Updating REUT CLI
 

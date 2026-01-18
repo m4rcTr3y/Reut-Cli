@@ -35,6 +35,7 @@ class ComposerStaticInit950b8c131ca58b671d106cd4732f19fc
         ),
         'R' =>
         array (
+            'Reut\\CLI\\' => 9,
             'Reut\\' => 5,
         ),
         'P' =>
@@ -104,6 +105,10 @@ class ComposerStaticInit950b8c131ca58b671d106cd4732f19fc
         'Slim\\' =>
         array (
             0 => __DIR__ . '/..' . '/slim/slim/Slim',
+        ),
+        'Reut\\CLI\\' =>
+        array (
+            0 => __DIR__ . '/../..' . '/src',
         ),
         'Reut\\' =>
         array (

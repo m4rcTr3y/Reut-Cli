@@ -58,79 +58,67 @@ if (version_compare(PHP_VERSION, '7.4.0', '<')) {
     exit('PHP >=7.4 is required. Current version: ' . PHP_VERSION . PHP_EOL);
 }
 
+// Load CLI classes
+use Reut\CLI\Commands\CommandRegistry;
+use Reut\CLI\Commands\HelpCommand;
+use Reut\CLI\Commands\InitCommand;
+use Reut\CLI\Commands\MigrateCommand;
+use Reut\CLI\Commands\StatusCommand;
+use Reut\CLI\Commands\GenerateModelCommand;
+use Reut\CLI\Commands\VersionCommand;
+use Reut\CLI\Output\Formatter;
+
+// Initialize command registry
+$registry = new CommandRegistry();
+
+// Register global commands (available everywhere)
+$registry->register(new HelpCommand($registry), ['-h', '--help']);
+$registry->register(new InitCommand());
+$registry->register(new MigrateCommand(), ['create']); // 'create' is alias for migrate
+$registry->register(new StatusCommand());
+$registry->register(new GenerateModelCommand());
+$registry->register(new VersionCommand(), ['-v', '--version']);
+
 // Get command from arguments
 $command = $argv[1] ?? 'help';
 
-// Handle commands
-switch ($command) {
-    case 'init':
-        initCommand($argv);
-        break;
-    case '-v':
-    case 'version':
-        echo "Reut CLI v1.4.0" . PHP_EOL;
-        exit(0);
-    case 'update':
-        updateCommand();
-        break;
-    case 'manage.php':
-        $manageFile = getcwd() . DIRECTORY_SEPARATOR . 'manage.php';
-        if (!file_exists($manageFile)) {
-            echo "Error: manage.php not found in current directory." . PHP_EOL;
-            exit(1);
-        }
-        $args = array_slice($argv, 2);
-        $cmd = '"' . PHP_BINARY . '" "' . $manageFile . '" ' . implode(' ', array_map('escapeshellarg', $args));
-        passthru($cmd, $exitCode);
-        exit($exitCode);
-    case 'create':
-    case 'status':
-    case 'generate:routes':
-    case 'generate:model':
-    case 'migrate':
-    case 'view':
-    case 'dev':
-    case 'inspect':
-    case 'sync':
-    case 'rollback':
-    case 'validate-migrations':
-    case 'export-migrations':
-    case 'import-migrations':
-        $manageFile = getcwd() . DIRECTORY_SEPARATOR . 'manage.php';
-        if (!file_exists($manageFile)) {
-            echo "Error: manage.php not found in current directory." . PHP_EOL;
-            exit(1);
-        }
-        $args = array_slice($argv, 1);
-        $cmd = '"' . PHP_BINARY . '" "' . $manageFile . '" ' . implode(' ', array_map('escapeshellarg', $args));
-        passthru($cmd, $exitCode);
-        exit($exitCode);
-    case '-h':
-    case 'help':
-    default:
-        echo "Reut CLI Tool v1.4.0" . PHP_EOL;
-        echo "Usage: Reut <command> or php manage.php <command>" . PHP_EOL;
-        echo "Commands:" . PHP_EOL;
-        echo "  init              - Initialize a new REUT project" . PHP_EOL;
-        echo "  create            - Initial start of project or add tables from models (alias of migrate)" . PHP_EOL;
-        echo "  migrate           - Apply migrations from model definitions (ensures tables exist)" . PHP_EOL;
-        echo "  sync              - Reconcile existing tables with models (may drop extra columns)" . PHP_EOL;
-        echo "  status            - Check for pending migrations in the models" . PHP_EOL;
-        echo "  inspect           - Inspect database schema and sync model definitions" . PHP_EOL;
-        echo "  rollback          - Rollback migrations (last batch, specific batch, or migration)" . PHP_EOL;
-        echo "  validate-migrations - Validate migration SQL syntax and check for issues" . PHP_EOL;
-        echo "  export-migrations - Export migration history to JSON/SQL file" . PHP_EOL;
-        echo "  import-migrations - Import migration history from JSON/SQL file" . PHP_EOL;
-        echo "  generate:routes   - Generate routes for each model into the route/ folder" . PHP_EOL;
-        echo "  generate:model    - Generate model class, pass the model name into the console" . PHP_EOL;
-        echo "  dev               - Start the local API dev server (built-in PHP server)" . PHP_EOL;
-        echo "  view              - Spin up a local HTML viewer for your models" . PHP_EOL;
-        echo "  update            - Update REUT CLI to the latest version" . PHP_EOL;
-        echo "  -v, version       - Show CLI version" . PHP_EOL;
-        echo "  -h, help          - Show this help message" . PHP_EOL;
-        echo "Requirements: PHP (>=7.4) and Composer must be installed." . PHP_EOL;
-        break;
+// Version is now handled by VersionCommand via registry
+
+if ($command === 'update') {
+    updateCommand();
+    exit(0);
 }
+
+// Check if it's a project-specific command (needs manage.php)
+$projectCommands = [
+    'generate:routes', 'generate:model', 'view', 'dev', 'inspect',
+    'sync', 'rollback', 'validate-migrations', 'export-migrations', 'import-migrations'
+];
+
+if (in_array($command, $projectCommands, true) || $command === 'manage.php') {
+    $manageFile = getcwd() . DIRECTORY_SEPARATOR . 'manage.php';
+    if (!file_exists($manageFile)) {
+        $formatter = new Formatter();
+        echo $formatter->error("Error: manage.php not found in current directory.") . PHP_EOL;
+        echo $formatter->comment("Make sure you're in a REUT project directory.") . PHP_EOL;
+        exit(1);
+    }
+    
+    if ($command === 'manage.php') {
+        $args = array_slice($argv, 2);
+    } else {
+        $args = array_slice($argv, 1);
+    }
+    
+    $cmd = '"' . PHP_BINARY . '" "' . $manageFile . '" ' . implode(' ', array_map('escapeshellarg', $args));
+    passthru($cmd, $exitCode);
+    exit($exitCode);
+}
+
+// Try to execute command through registry
+// Skip script name (argv[0]) and command name (argv[1]), pass remaining args
+$exitCode = $registry->execute($command, array_slice($argv, 2));
+exit($exitCode);
 
 function initCommand(array $argv): void
 {
@@ -415,7 +403,12 @@ PHP;
             $basicComposer = json_encode([
                 'name' => "reut/$packageSlug",
                 'require' => ['php' => '>=7.4'],
-                'autoload' => ['psr-4' => ["MyFramework\\" => "src/"]]
+                'autoload' => [
+                    'psr-4' => [
+                        "Reut\\Models\\" => "models/",
+                        "Reut\\Routers\\" => "routers/"
+                    ]
+                ]
             ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
             file_put_contents('composer.json', $basicComposer);
         }
@@ -490,7 +483,7 @@ function updateCommand(): void
     echo "Updating REUT CLI..." . PHP_EOL;
     
     // Get current version
-    $currentVersion = "1.4.2";
+    $currentVersion = "1.4.9";
     echo "Current version: v{$currentVersion}" . PHP_EOL;
     
     // Clear composer cache completely to avoid tag caching issues

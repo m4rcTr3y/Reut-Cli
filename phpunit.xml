@@ -9,6 +9,9 @@
         <testsuite name="Migration Tests">
             <directory>tests</directory>
         </testsuite>
+        <testsuite name="CLI Tests">
+            <directory>tests/CLI</directory>
+        </testsuite>
     </testsuites>
     <coverage>
         <include>

@@ -20,7 +20,7 @@ class VersionCommand extends Command
 
     public function execute(array $args = []): int
     {
-        $this->writeln($this->formatter->title('REUT CLI') . ' v1.4.2');
+        $this->writeln($this->formatter->title('REUT CLI') . ' v1.4.9');
         return 0;
     }
 }

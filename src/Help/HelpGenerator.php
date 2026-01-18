@@ -29,7 +29,7 @@ class HelpGenerator
     {
         $output = [];
         
-        $output[] = $this->formatter->title('REUT CLI Tool') . ' v1.4.2';
+        $output[] = $this->formatter->title('REUT CLI Tool') . ' v1.4.9';
         $output[] = '';
         $output[] = $this->formatter->section('Usage:');
         $output[] = '  Reut <command> [options]';
