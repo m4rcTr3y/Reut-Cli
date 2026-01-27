@@ -283,7 +283,7 @@ class MigrateCommand extends Command
     private function applyCreateTable($baseDb, $tableInstance, int $batch): void
     {
         $tableName = $tableInstance->tableName;
-        $sql = $tableInstance->getCreateTableSQL();
+        $sql = $tableInstance->genSQL();
         $timestamp = date('YmdHis');
         $migrationName = "create_{$tableName}_table_{$timestamp}";
 
