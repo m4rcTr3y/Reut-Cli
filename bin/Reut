@@ -66,6 +66,7 @@ use Reut\CLI\Commands\MigrateCommand;
 use Reut\CLI\Commands\StatusCommand;
 use Reut\CLI\Commands\GenerateModelCommand;
 use Reut\CLI\Commands\VersionCommand;
+use Reut\CLI\Commands\AdminSetupCommand;
 use Reut\CLI\Output\Formatter;
 
 // Initialize command registry
@@ -78,6 +79,95 @@ $registry->register(new MigrateCommand(), ['create']); // 'create' is alias for 
 $registry->register(new StatusCommand());
 $registry->register(new GenerateModelCommand());
 $registry->register(new VersionCommand(), ['-v', '--version']);
+
+// Register admin:setup command only if reut-admin is installed
+// Check if package is actually installed (not just if class can be autoloaded)
+if (isReutAdminInstalled()) {
+    $registry->register(new AdminSetupCommand());
+}
+
+/**
+ * Check if reut-admin package is actually installed in the current project
+ * This checks the project's vendor directory, not global installation
+ */
+function isReutAdminInstalled(): bool
+{
+    // First, try to find project root
+    $projectRoot = findProjectRoot();
+    if (!$projectRoot) {
+        return false;
+    }
+
+    // Check if vendor directory exists
+    $vendorDir = $projectRoot . '/vendor';
+    if (!is_dir($vendorDir)) {
+        return false;
+    }
+
+    // Method 1: Check if vendor/m4rc/reut-admin directory exists (most reliable for project-specific check)
+    $adminPackageDir = $vendorDir . '/m4rc/reut-admin';
+    if (is_dir($adminPackageDir)) {
+        // Also verify the class file exists to ensure it's properly installed
+        $classFile = $adminPackageDir . '/src/Commands/AdminSetupCommand.php';
+        if (file_exists($classFile)) {
+            return true;
+        }
+    }
+
+    // Method 2: Check composer/installed.json in project's vendor directory
+    $installedJson = $vendorDir . '/composer/installed.json';
+    if (file_exists($installedJson)) {
+        $installed = @json_decode(file_get_contents($installedJson), true);
+        if (is_array($installed)) {
+            // Handle both formats: array of packages or {packages: [...]}
+            $packages = isset($installed['packages']) ? $installed['packages'] : $installed;
+            foreach ($packages as $package) {
+                if (isset($package['name']) && $package['name'] === 'm4rc/reut-admin') {
+                    return true;
+                }
+            }
+        }
+    }
+
+    // Method 3: Check composer.lock (fallback)
+    $composerLock = $projectRoot . '/composer.lock';
+    if (file_exists($composerLock)) {
+        $lock = @json_decode(file_get_contents($composerLock), true);
+        if (is_array($lock) && isset($lock['packages'])) {
+            foreach ($lock['packages'] as $package) {
+                if (isset($package['name']) && $package['name'] === 'm4rc/reut-admin') {
+                    return true;
+                }
+            }
+        }
+    }
+
+    return false;
+}
+
+/**
+ * Find project root by looking for composer.json
+ */
+function findProjectRoot(): ?string
+{
+    $currentDir = getcwd();
+    $dir = $currentDir;
+
+    // Go up directories until we find composer.json or hit root
+    while ($dir !== dirname($dir)) {
+        if (file_exists($dir . '/composer.json')) {
+            return $dir;
+        }
+        $dir = dirname($dir);
+    }
+
+    // If not found, try current directory
+    if (file_exists($currentDir . '/composer.json')) {
+        return $currentDir;
+    }
+
+    return null;
+}
 
 // Get command from arguments
 $command = $argv[1] ?? 'help';

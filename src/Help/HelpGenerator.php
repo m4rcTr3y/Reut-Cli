@@ -136,7 +136,7 @@ class HelpGenerator
         ];
 
         $categories = [
-            'Project Setup' => ['init'],
+            'Project Setup' => ['init', 'admin:setup'],
             'Migrations' => ['migrate', 'create', 'status', 'rollback', 'sync', 'validate-migrations', 'export-migrations', 'import-migrations'],
             'Generation' => ['generate:model', 'generate:routes'],
             'Development' => ['dev', 'view', 'inspect'],
