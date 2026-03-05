@@ -21,7 +21,7 @@
     ],
     "require": {
         "php": ">=7.4",
-        "reut/core": "^1.5"
+        "reut/core": "^1.4"
     },
     "require-dev": {
         "phpunit/phpunit": "^10.0"
