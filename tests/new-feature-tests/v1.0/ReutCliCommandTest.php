@@ -76,7 +76,12 @@ class ReutCliCommandTest extends TestCase
     public function testCliVersionCommand(): void
     {
         $output = $this->runCliCommand(['-v']);
-        $this->assertStringContainsString('v1.2.0', $output, 'Version command should show version');
+        $hasSemver = (bool) preg_match('/\d+\.\d+\.\d+/', $output);
+        $hasDevVersion = str_contains($output, 'dev-');
+        $this->assertTrue(
+            $hasSemver || $hasDevVersion,
+            'Version command should show a semver-like version or dev version. Got: ' . substr($output, 0, 200)
+        );
     }
 
     /**

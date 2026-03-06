@@ -7,6 +7,7 @@ use Reut\CLI\Commands\Command;
 use Reut\CLI\Commands\CommandRegistry;
 use Reut\CLI\Output\Formatter;
 use Reut\CLI\Output\Table;
+use Reut\CLI\Version;
 
 /**
  * Dynamic help generator
@@ -29,7 +30,7 @@ class HelpGenerator
     {
         $output = [];
         
-        $output[] = $this->formatter->title('REUT CLI Tool') . ' v1.4.9';
+        $output[] = $this->formatter->title('REUT CLI Tool') . ' v' . Version::get();
         $output[] = '';
         $output[] = $this->formatter->section('Usage:');
         $output[] = '  Reut <command> [options]';

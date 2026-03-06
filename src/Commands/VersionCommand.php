@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 namespace Reut\CLI\Commands;
 
+use Reut\CLI\Version;
+
 /**
  * Version command
  */
@@ -20,7 +22,7 @@ class VersionCommand extends Command
 
     public function execute(array $args = []): int
     {
-        $this->writeln($this->formatter->title('REUT CLI') . ' v1.4.9');
+        $this->writeln($this->formatter->title('REUT CLI') . ' v' . Version::get());
         return 0;
     }
 }

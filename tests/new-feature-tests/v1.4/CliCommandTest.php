@@ -15,7 +15,7 @@ use PDO;
  * 3. Test user credential prompts and storage
  * 4. CORS middleware integration in generated projects
  * 5. Post-migration user creation
- * 6. Version command showing v1.4.9
+ * 6. Version command showing current CLI version
  * 
  * Database credentials:
  * - Username: root
@@ -85,15 +85,16 @@ class CliCommandTest extends TestCase
     }
 
     /**
-     * Test CLI version command shows v1.4.9
+     * Test CLI version command shows a semver-like version or dev version
      */
     public function testCliVersionCommand(): void
     {
         $output = $this->runCliCommand(['-v']);
-        // Check for version 1.4.9 (might be shown as 1.4.9 or v1.4.9)
+        $hasSemver = (bool) preg_match('/\d+\.\d+\.\d+/', $output);
+        $hasDevVersion = str_contains($output, 'dev-');
         $this->assertTrue(
-            strpos($output, '1.4.9') !== false || strpos($output, 'v1.4.9') !== false,
-            'Version command should show 1.4.9. Got: ' . substr($output, 0, 200)
+            $hasSemver || $hasDevVersion,
+            'Version command should show a semver-like version (e.g. 1.4.9) or dev version. Got: ' . substr($output, 0, 200)
         );
     }
 
