@@ -2,7 +2,7 @@
     "name": "m4rc/reut_cli",
     "description": "REUT CLI Tool - A lightweight PHP framework with model-based database management",
     "type": "library",
-    "version": "1.4.9",
+    "version": "1.5.0",
     "autoload": {
         "psr-4": {
             "M4rc\\ReutCli\\": "src/",
